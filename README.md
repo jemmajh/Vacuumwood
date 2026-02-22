@@ -1,21 +1,23 @@
-Electricity Price Optimization Platform
+Financial Optimization Platform for Vertical Farming
 
 Overview
 
-This project analyzes long-term hourly electricity pricing data (~87,000 records) to identify cost-efficient operating windows for vertical farming operations.
+This project is a client-facing financial modeling tool developed in collaboration with an industry partner. It processes long-term electricity market data to simulate cost-efficient operating strategies for vertical farming businesses.
 
 Tech Stack
 	•	Python
-	•	pandas / NumPy
-	•	Data visualization tools
+	•	Streamlit
+	•	Pandas / NumPy
+	•	Excel-based financial inputs
 
-Key Features
-	•	Data cleaning and preprocessing
+Features
+	•	Data cleaning and transformation
 	•	Time-series aggregation
-	•	Scenario simulation
-	•	Business-oriented dashboard output
+	•	Cost simulation models
+	•	Interactive UI for business users
+	•	Scenario-based financial projections
 
-What I Learned
-	•	Structured dataset modeling
-	•	Transforming business requirements into analytical views
-	•	Building client-facing data tools
+Key Learnings
+	•	Designing structured data models
+	•	Translating business requirements into technical solutions
+	•	Building lightweight, deployable analytical tools
