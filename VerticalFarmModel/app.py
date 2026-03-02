@@ -8,6 +8,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import cm
 
+import config as cfg
 from ui.styles import apply_branding, vw_section
 from core.model import compute_areas, compute_sales, compute_capex, compute_opex, build_forecast
 from core.schemas import FarmInputs, CropInputs, FinanceInputs, ElectricityScenario
