@@ -1,21 +1,31 @@
 import streamlit as st
 
 from ui.styles import apply_branding, vw_section
+from core.model import (
+    compute_areas,
+    compute_sales,
+    compute_capex,
+    compute_opex,
+    build_forecast,
+)
+
+# Schemas you already use in model.py
+from core.schemas import FarmInputs, CropInputs, FinanceInputs, ElectricityScenario
+
+import config as cfg
 
 
 # -----------------------------
-# Page config (must be first Streamlit call)
+# Page config (must be first)
 # -----------------------------
 st.set_page_config(
     page_title="VacuumWood Financial Model",
     layout="wide",
-    initial_sidebar_state="collapsed",  # hides the big input sidebar feeling
+    initial_sidebar_state="collapsed",
 )
 
-# Branding header (logo)
 apply_branding()
 
-# Optional: remove Streamlit top padding a bit
 st.markdown(
     """
     <style>
@@ -25,68 +35,85 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-
-# -----------------------------
-# Main content (no big input UI)
-# -----------------------------
 vw_section("Financial Model Summary")
-
 st.write(
-    "This dashboard shows the latest baseline outputs from the financial model. "
-    "Use the **electricity optimization** page for historical Nordpool scheduling."
+    "This page shows baseline outputs using default assumptions. "
+    "For historical Nordpool scheduling, use the **electricity optimization** page."
 )
 
-# Layout
-col1, col2, col3 = st.columns(3)
+# -----------------------------
+# Build DEFAULT inputs (no UI)
+# -----------------------------
+# Update these defaults if you want different “baseline” numbers:
+farm = FarmInputs(
+    length_m=30.0,
+    width_m=20.0,
+    height_m=2.6,
+    insulation_thickness_m=0.30,
+    floor_usage_eff=0.75,
+    floors=6,
+)
 
-# You can plug your real model outputs here.
-# For now, we try to import and compute; if something fails, we show a readable error.
-try:
-    # Import your own project modules (adjust if your function names differ)
-    import config
-    from core.model import build_model_outputs  # <-- if your project has a different function name, tell me
-    # Example: outputs = build_model_outputs(config.DEFAULT_PARAMS)
+# Crop defaults
+# These keys must match your cfg.DEFAULT_PRICE keys and crop names used in yields/shares.
+selected = ["Lettuce", "Basil"]
+crops = CropInputs(
+    selected=selected,
+    shares={"Lettuce": 0.5, "Basil": 0.5},
+    yields_kg_m2_yr={"Lettuce": 20.0, "Basil": 15.0},
+)
 
-    outputs = build_model_outputs()  # simplest call; change if needed
+# Finance defaults
+fin = FinanceInputs(
+    years=10,
+    discount_rate=0.08,
+    year1_eff=0.8,
+    eff_gain=0.05,
+)
 
-    # Expected outputs structure (example):
-    # outputs = {
-    #   "total_yearly_sales": 1471500,
-    #   "total_capex": 4025000,
-    #   "payback_years": 6.2,
-    #   "notes": "...",
-    # }
-
-    with col1:
-        st.metric("Total Yearly Sales (€)", f"{outputs['total_yearly_sales']:,.0f}")
-
-    with col2:
-        st.metric("Total CAPEX (€)", f"{outputs['total_capex']:,.0f}")
-
-    with col3:
-        if "payback_years" in outputs and outputs["payback_years"] is not None:
-            st.metric("Payback (years)", f"{outputs['payback_years']:.1f}")
-        else:
-            st.metric("Payback (years)", "—")
-
-    vw_section("Notes")
-    if "notes" in outputs and outputs["notes"]:
-        st.info(outputs["notes"])
-    else:
-        st.caption("No notes.")
-
-except Exception as e:
-    # This keeps the app “alive” even if your model import/function name isn't matching yet.
-    st.warning(
-        "I couldn’t run the model function from `core/model.py` yet. "
-        "This is normal if the function name/signature is different."
-    )
-    st.caption("Fix: tell me what function you want to call to compute outputs, and what it returns.")
-    st.exception(e)
-
+# Electricity defaults
+scenario = ElectricityScenario(
+    selected="base",  # "base" or "opt"
+    base_price_eur_kwh=0.12,
+    opt_price_eur_kwh=0.09,
+)
 
 # -----------------------------
-# Footer
+# Run model
 # -----------------------------
+areas = compute_areas(farm)
+sales_df, total_sales = compute_sales(areas["total_cultivatable"], crops)
+capex = compute_capex(areas["floor_area"], areas["total_cultivatable"])
+opex = compute_opex(areas["total_cultivatable"], scenario)
+forecast_df, payback_year = build_forecast(
+    total_sales=total_sales,
+    yearly_opex=opex["yearly_opex"],
+    capex_net=capex["net"],
+    fin=fin,
+)
+
+# -----------------------------
+# Display
+# -----------------------------
+col1, col2, col3, col4 = st.columns(4)
+
+with col1:
+    st.metric("Total yearly sales (€)", f"{total_sales:,.0f}")
+
+with col2:
+    st.metric("CAPEX net (€)", f"{capex['net']:,.0f}")
+
+with col3:
+    st.metric("Yearly OPEX (€)", f"{opex['yearly_opex']:,.0f}")
+
+with col4:
+    st.metric("Payback (year)", str(payback_year) if payback_year is not None else "—")
+
+vw_section("Sales split")
+st.dataframe(sales_df, use_container_width=True)
+
+vw_section("Forecast")
+st.dataframe(forecast_df, use_container_width=True)
+
 st.markdown("---")
 st.caption("VacuumWood • Vertical Farming Financial Model")
