@@ -68,9 +68,13 @@ cont_price = float(row["continuous_price_year_eur_kwh"])
 sparse_price = float(row["sparse_price_year_eur_kwh"])
 fixed_price = float(row["fixed_price_year_eur_kwh"]) if "fixed_price_year_eur_kwh" in yearly.columns else None
 
-# Store prices so main app can use them immediately
-st.session_state["base_price_eur_kwh"] = baseline_price
 
+if st.button("Use these prices in main model"):
+    st.session_state["base_price_eur_kwh"] = baseline_price
+    st.session_state["opt_price_eur_kwh"] = cont_price if opt_mode == "Continuous optimized" else sparse_price
+    st.success("Saved. Open the main page and switch scenario to see payback/NPV update.")
+
+# Store prices so main app can use them immediately
 # Choose which optimized price to feed back (continuous is usually the “best story”)
 opt_mode = st.radio(
     "Use optimized price from:",
@@ -78,9 +82,14 @@ opt_mode = st.radio(
     horizontal=True,
 )
 
-st.session_state["opt_price_eur_kwh"] = (
-    cont_price if opt_mode == "Continuous optimized" else sparse_price
+st.session_state["base_price_eur_kwh"] = baseline_price
+st.session_state["opt_price_eur_kwh"] = cont_price if opt_mode == "Continuous optimized" else sparse_price
+
+st.caption(
+    f"Saved to main model → base: {st.session_state['base_price_eur_kwh']:.4f} €/kWh, "
+    f"optimized: {st.session_state['opt_price_eur_kwh']:.4f} €/kWh"
 )
+
 baseline_cost = kwh_year * baseline_price
 cont_cost = kwh_year * cont_price
 sparse_cost = kwh_year * sparse_price

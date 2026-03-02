@@ -143,23 +143,21 @@ with st.expander("Assumptions (optional)", expanded=False):
     st.caption("In client demos, keep this closed. It’s for internal exploration only.")
 
 
-# -----------------------------
-# Scenario switch (Base vs Optimized)
-# Reads prices from session_state (set by electricity page) with safe fallbacks.
-# -----------------------------
+# ---- Scenario switch
 scenario_choice = st.radio(
     "Electricity scenario",
     ["Base price", "Optimized schedule"],
     horizontal=True,
 )
 
-base_price = float(st.session_state.get("base_price_eur_kwh", 0.12))
-opt_price = float(st.session_state.get("opt_price_eur_kwh", 0.09))
+# Always read latest values (electricity page can set these)
+base_price = float(st.session_state.get("base_price_eur_kwh", cfg.ELEC_PRICE_BASE))
+opt_price = float(st.session_state.get("opt_price_eur_kwh", cfg.ELEC_PRICE_OPT))
 
 scenario = ElectricityScenario(
-    selected="base", #if scenario_choice == "Base price" else "opt",
-    base_price_eur_kwh=cfg.ELEC_PRICE_BASE,
-    opt_price_eur_kwh=cfg.ELEC_PRICE_OPT,
+    selected="base" if scenario_choice == "Base price" else "opt",
+    base_price_eur_kwh=base_price,
+    opt_price_eur_kwh=opt_price,
 )
 
 
@@ -195,6 +193,12 @@ areas = compute_areas(farm)
 sales_df, total_sales = compute_sales(areas["total_cultivatable"], crops)
 capex = compute_capex(areas["floor_area"], areas["total_cultivatable"])
 opex = compute_opex(areas["total_cultivatable"], scenario)
+with st.expander("Debug (temporary)", expanded=False):
+    st.write("scenario.selected:", scenario.selected)
+    st.write("base_price:", base_price)
+    st.write("opt_price:", opt_price)
+    st.write("price_used (compute_opex):", opex["price_used"])
+    st.write("elec_cost:", opex["elec_cost"])
 forecast_df, payback_year = build_forecast(
     total_sales=total_sales,
     yearly_opex=opex["yearly_opex"],
