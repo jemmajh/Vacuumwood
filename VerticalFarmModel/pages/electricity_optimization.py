@@ -2,15 +2,17 @@ import streamlit as st
 import pandas as pd
 from pathlib import Path
 
-st.set_page_config(page_title="Electricity Optimization", layout="wide")
 
-REPORT_DIR = Path("data/optimization_reports")
+BASE_DIR = Path(__file__).resolve().parents[1]   # -> VerticalFarmModel/
+REPORT_DIR = BASE_DIR / "data" / "optimization_reports"
 
 @st.cache_data
-def load_yearly_summary(hours_needed: int) -> pd.DataFrame:
-    path = REPORT_DIR / f"thesis_yearly_summary_{hours_needed}h.csv"
-    df = pd.read_csv(path)
-    return df
+def load_yearly_summary(photoperiod: int) -> pd.DataFrame:
+    path = REPORT_DIR / f"thesis_yearly_summary_{photoperiod}h.csv"
+    if not path.exists():
+        st.error(f"Missing file: {path.name}. Make sure it is committed to GitHub.")
+        return pd.DataFrame()
+    return pd.read_csv(path)
 
 @st.cache_data
 def load_daily_report(hours_needed: int) -> pd.DataFrame:
