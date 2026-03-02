@@ -156,9 +156,9 @@ base_price = float(st.session_state.get("base_price_eur_kwh", 0.12))
 opt_price = float(st.session_state.get("opt_price_eur_kwh", 0.09))
 
 scenario = ElectricityScenario(
-    selected="base" if scenario_choice == "Base price" else "opt",
-    base_price_eur_kwh=base_price,
-    opt_price_eur_kwh=opt_price,
+    selected="base", #if scenario_choice == "Base price" else "opt",
+    base_price_eur_kwh=cfg.ELEC_PRICE_BASE,
+    opt_price_eur_kwh=cfg.ELEC_PRICE_OPT,
 )
 
 
@@ -175,8 +175,8 @@ farm = FarmInputs(
 
 crops = CropInputs(
     selected=["Lettuce", "Basil"],
-    shares={"Lettuce": 0.5, "Basil": 0.5},
-    yields_kg_m2_yr={"Lettuce": 20.0, "Basil": 15.0},
+    shares={"Lettuce": 0.8, "Basil": 0.2},
+    yields_kg_m2_yr={"Lettuce": 70.0, "Basil": 30.0},
 )
 
 fin = FinanceInputs(

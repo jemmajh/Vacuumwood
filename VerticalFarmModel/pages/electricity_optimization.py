@@ -72,9 +72,15 @@ fixed_price = float(row["fixed_price_year_eur_kwh"]) if "fixed_price_year_eur_kw
 st.session_state["base_price_eur_kwh"] = baseline_price
 
 # Choose which optimized price to feed back (continuous is usually the “best story”)
-opt_mode = st.radio("Use optimized price from:", ["Continuous optimized", "Sparse optimized"], horizontal=True)
-st.session_state["opt_price_eur_kwh"] = cont_price if opt_mode == "Continuous optimized" else sparse_price
+opt_mode = st.radio(
+    "Use optimized price from:",
+    ["Continuous optimized", "Sparse optimized"],
+    horizontal=True,
+)
 
+st.session_state["opt_price_eur_kwh"] = (
+    cont_price if opt_mode == "Continuous optimized" else sparse_price
+)
 baseline_cost = kwh_year * baseline_price
 cont_cost = kwh_year * cont_price
 sparse_cost = kwh_year * sparse_price
