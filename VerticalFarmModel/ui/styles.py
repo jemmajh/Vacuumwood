@@ -1,6 +1,5 @@
 import streamlit as st
 
-from ui.styles import apply_branding, vw_section
 from core.model import (
     compute_areas,
     compute_sales,
