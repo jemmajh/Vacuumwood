@@ -45,20 +45,23 @@ year = st.selectbox("Select year (for example scenario)", years, index=len(years
 row = yearly[yearly["year"] == year].iloc[0]
 
 # Read kWh from session (if available)
-kwh_year = st.session_state.get("elec_use_kwh", None)
+kwh_year = st.session_state.get("elec_use_kwh")
 
 baseline_price = float(row["avg_price_year_eur_kwh"])
 fixed_price = float(row["fixed_price_year_eur_kwh"]) if "fixed_price_year_eur_kwh" in yearly.columns else None
 cont_price = float(row["continuous_price_year_eur_kwh"])
 sparse_price = float(row["sparse_price_year_eur_kwh"])
 
-# If kwh_year is missing, show prices only + instructions
 if kwh_year is None:
-    st.warning(
-        "I can’t compute €/year costs because `elec_use_kwh` is not available yet.\n\n"
-        "Fix: open the main **app** page first (it should compute OPEX and set `st.session_state['elec_use_kwh']`)."
+    st.info("Electricity use (kWh/year) not found from main model yet — enter it manually:")
+    kwh_year = st.number_input(
+        "Electricity use (kWh/year)",
+        min_value=0.0,
+        value=1_000_000.0,
+        step=10_000.0,
     )
-    kwh_year = 0.0  # prevent crashes; money numbers will be 0
+
+kwh_year = float(kwh_year)
 
 baseline_cost = kwh_year * baseline_price
 cont_cost = kwh_year * cont_price

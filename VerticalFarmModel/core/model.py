@@ -1,16 +1,8 @@
-import streamlit as st
+from typing import Dict, Tuple, Optional
 import pandas as pd
-from ui.styles import apply_branding, vw_section
+
 from core.schemas import FarmInputs, CropInputs, FinanceInputs, ElectricityScenario
 import config as cfg
-
-from core.model import (
-    compute_areas,
-    compute_sales,
-    compute_capex,
-    compute_opex,
-    build_forecast,
-)
 
 # --- MUST be first Streamlit call ---
 st.set_page_config(
