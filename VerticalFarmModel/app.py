@@ -1,266 +1,218 @@
-# VerticalFarmModel/app.py
+# app.py
 from __future__ import annotations
 
-import sys
-from pathlib import Path
 import streamlit as st
-import pandas as pd
 
-# ---------------------------------------------------------------------
-# Make imports work reliably on Streamlit Cloud
-# ---------------------------------------------------------------------
-BASE_DIR = Path(__file__).resolve().parent  # VerticalFarmModel/
-if str(BASE_DIR) not in sys.path:
-    sys.path.insert(0, str(BASE_DIR))
+# MUST be the first Streamlit call
+st.set_page_config(
+    page_title="VacuumWood Financial Model",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
 
-# Now project imports
-from ui.styles import apply_branding, vw_section
-
-# Core model + schemas
-from core.model import (
+# ---- Imports (after page config) ----
+from ui.styles import apply_branding, vw_section  # noqa: E402
+from core.schemas import FarmInputs, CropInputs, FinanceInputs, ElectricityScenario  # noqa: E402
+from core.model import (  # noqa: E402
     compute_areas,
     compute_sales,
     compute_capex,
     compute_opex,
     build_forecast,
 )
-from core.schemas import FarmInputs, CropInputs, FinanceInputs, ElectricityScenario
 
-import config as cfg
-
-
-# ---------------------------------------------------------------------
-# Page config MUST be the first Streamlit call
-# ---------------------------------------------------------------------
-st.set_page_config(page_title="VacuumWood Financial Model", layout="wide")
+try:
+    import config as cfg  # noqa: E402
+except Exception:
+    cfg = None
 
 
-# ---------------------------------------------------------------------
-# Helper: safe formatting
-# ---------------------------------------------------------------------
-def eur(x: float) -> str:
-    return f"€{x:,.0f}"
+def _cfg_get(name: str, fallback):
+    """Safe getter for config values."""
+    if cfg is None:
+        return fallback
+    return getattr(cfg, name, fallback)
 
 
-def kwh(x: float) -> str:
-    return f"{x:,.0f} kWh"
-
-
-# ---------------------------------------------------------------------
-# Default inputs (NO big UI by default)
-# You can tune these to your preferred “baseline”.
-# ---------------------------------------------------------------------
-def default_inputs():
+def build_default_inputs():
+    # Farm defaults
     farm = FarmInputs(
-        length_m=30.0,
-        width_m=20.0,
-        height_m=2.6,
-        insulation_m=0.30,
-        floor_usage_eff=0.75,
-        floors=6,
+        length_m=float(_cfg_get("DEFAULT_LENGTH_M", 30.0)),
+        width_m=float(_cfg_get("DEFAULT_WIDTH_M", 20.0)),
+        height_m=float(_cfg_get("DEFAULT_HEIGHT_M", 2.6)),
+        insulation_m=float(_cfg_get("DEFAULT_INSULATION_M", 0.30)),
+        floor_usage_eff=float(_cfg_get("DEFAULT_FLOOR_USAGE_EFF", 0.75)),
+        floors=int(_cfg_get("DEFAULT_FLOORS", 6)),
     )
 
-    # Pick crops that exist in cfg.DEFAULT_PRICE
-    # Shares must sum to 1.0
+    # Crop defaults
+    default_selected = _cfg_get("DEFAULT_CROPS_SELECTED", ["Lettuce", "Basil"])
+    default_shares = _cfg_get("DEFAULT_CROP_SHARES", {"Lettuce": 0.5, "Basil": 0.5})
+    default_yields = _cfg_get(
+        "DEFAULT_CROP_YIELDS",
+        {"Lettuce": 15.0, "Basil": 20.0},  # kg/m²/year placeholders
+    )
+
     crops = CropInputs(
-        selected=["Lettuce", "Basil"],
-        shares={"Lettuce": 0.5, "Basil": 0.5},
-        yields_kg_m2_yr={
-            "Lettuce": 25.0,
-            "Basil": 18.0,
-        },
+        selected=list(default_selected),
+        shares=dict(default_shares),
+        yields_kg_m2_yr=dict(default_yields),
     )
 
-    scenario = ElectricityScenario(
-        selected="base",               # "base" or "opt"
-        base_price_eur_kwh=0.12,
-        opt_price_eur_kwh=0.08,
-    )
-
+    # Finance defaults
     fin = FinanceInputs(
-        years=15,
-        discount_rate=0.08,
-        year1_eff=0.85,
-        eff_gain=0.03,
+        discount_rate=float(_cfg_get("DEFAULT_DISCOUNT_RATE", 0.08)),
+        year1_eff=float(_cfg_get("DEFAULT_YEAR1_EFF", 0.85)),
+        eff_gain=float(_cfg_get("DEFAULT_EFF_GAIN", 0.03)),
+        years=int(_cfg_get("DEFAULT_FORECAST_YEARS", 15)),
     )
 
-    return farm, crops, scenario, fin
+    # Electricity defaults
+    scenario = ElectricityScenario(
+        base_price_eur_kwh=float(_cfg_get("DEFAULT_BASE_PRICE_EUR_KWH", 0.10)),
+        opt_price_eur_kwh=float(_cfg_get("DEFAULT_OPT_PRICE_EUR_KWH", 0.07)),
+        selected=str(_cfg_get("DEFAULT_ELEC_SELECTED", "base")),  # "base" or "opt"
+    )
+
+    return farm, crops, fin, scenario
 
 
-# ---------------------------------------------------------------------
-# Branding + small layout tweaks
-# ---------------------------------------------------------------------
-apply_branding()
+def main():
+    apply_branding()
 
-st.markdown(
-    """
-    <style>
-      .block-container { padding-top: 1.2rem; padding-bottom: 2rem; }
-      /* Optional: slightly calmer sidebar */
-      section[data-testid="stSidebar"] { width: 320px; }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+    # Small layout polish
+    st.markdown(
+        """
+        <style>
+          .block-container { padding-top: 1.0rem; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
+    st.caption(
+        "Baseline financial outputs for a vertical farm. "
+        "Use the **Electricity Optimization** page to explore historical scheduling strategies."
+    )
 
-# ---------------------------------------------------------------------
-# Sidebar (hidden-ish): only advanced controls
-# ---------------------------------------------------------------------
-farm, crops, scenario, fin = default_inputs()
+    farm, crops, fin, scenario = build_default_inputs()
 
-with st.sidebar:
-    st.title("Settings")
+    # Optional inputs, but not “big sidebar”
+    with st.expander("Assumptions (optional)", expanded=False):
+        c1, c2, c3 = st.columns(3)
 
-    with st.expander("Advanced settings", expanded=False):
-        st.subheader("Farm")
-        farm.length_m = st.number_input("Inner Length (m)", 1.0, 500.0, float(farm.length_m), 0.5)
-        farm.width_m = st.number_input("Inner Width (m)", 1.0, 500.0, float(farm.width_m), 0.5)
-        farm.height_m = st.number_input("Inner Height (m)", 1.0, 20.0, float(farm.height_m), 0.1)
-        farm.insulation_m = st.number_input("Insulation Thickness (m)", 0.0, 2.0, float(farm.insulation_m), 0.05)
-        farm.floor_usage_eff = st.slider("Floor Usage Efficiency", 0.10, 1.00, float(farm.floor_usage_eff), 0.01)
-        farm.floors = st.number_input("Number of Floors", 1, 60, int(farm.floors), 1)
+        with c1:
+            length_m = st.number_input("Inner Length (m)", min_value=1.0, value=float(farm.length_m), step=1.0)
+            width_m = st.number_input("Inner Width (m)", min_value=1.0, value=float(farm.width_m), step=1.0)
+            height_m = st.number_input("Inner Height (m)", min_value=1.0, value=float(farm.height_m), step=0.1)
 
-        st.subheader("Electricity")
-        scenario.base_price_eur_kwh = st.number_input("Base price €/kWh", 0.0, 2.0, float(scenario.base_price_eur_kwh), 0.01)
-        scenario.opt_price_eur_kwh = st.number_input("Optimised price €/kWh", 0.0, 2.0, float(scenario.opt_price_eur_kwh), 0.01)
-        scenario.selected = st.radio(
-            "Electricity scenario used in totals",
-            options=["base", "opt"],
-            index=0 if scenario.selected == "base" else 1,
-            horizontal=True,
+        with c2:
+            insulation_m = st.number_input("Insulation Thickness (m)", min_value=0.0, value=float(farm.insulation_m), step=0.05)
+            floor_usage_eff = st.slider("Floor Usage Efficiency", min_value=0.10, max_value=1.00, value=float(farm.floor_usage_eff), step=0.01)
+            floors = st.number_input("Number of Floors", min_value=1, value=int(farm.floors), step=1)
+
+        with c3:
+            selected_mode = st.radio(
+                "Electricity price scenario",
+                options=["base", "opt"],
+                index=0 if scenario.selected == "base" else 1,
+                horizontal=True,
+            )
+            base_price = st.number_input("Base price (€/kWh)", min_value=0.0, value=float(scenario.base_price_eur_kwh), step=0.01)
+            opt_price = st.number_input("Optimised price (€/kWh)", min_value=0.0, value=float(scenario.opt_price_eur_kwh), step=0.01)
+
+        farm = FarmInputs(
+            length_m=float(length_m),
+            width_m=float(width_m),
+            height_m=float(height_m),
+            insulation_m=float(insulation_m),
+            floor_usage_eff=float(floor_usage_eff),
+            floors=int(floors),
         )
 
-        st.subheader("Finance")
-        fin.years = st.number_input("Forecast years", 1, 40, int(fin.years), 1)
-        fin.discount_rate = st.number_input("Discount rate", 0.0, 0.50, float(fin.discount_rate), 0.01)
-        fin.year1_eff = st.number_input("Year 1 efficiency", 0.0, 1.0, float(fin.year1_eff), 0.01)
-        fin.eff_gain = st.number_input("Efficiency gain / year", 0.0, 0.20, float(fin.eff_gain), 0.01)
+        scenario = ElectricityScenario(
+            base_price_eur_kwh=float(base_price),
+            opt_price_eur_kwh=float(opt_price),
+            selected=str(selected_mode),
+        )
 
-    st.caption("Tip: the electricity optimisation page is in the left menu (multi-page app).")
+        # (Keep crops/finance editable later if you want—this keeps it simple for now.)
 
-
-# ---------------------------------------------------------------------
-# Compute model
-# ---------------------------------------------------------------------
-try:
+    # ---- Compute outputs ----
     areas = compute_areas(farm)
     sales_df, total_sales = compute_sales(areas["total_cultivatable"], crops)
     capex = compute_capex(areas["floor_area"], areas["total_cultivatable"])
     opex = compute_opex(areas["total_cultivatable"], scenario)
-    forecast_df, payback_year = build_forecast(
-        total_sales=total_sales,
-        yearly_opex=opex["yearly_opex"],
-        capex_net=capex["net"],
-        fin=fin,
-    )
-except Exception as e:
-    st.error("The app couldn’t compute the model. This is usually an import/schema mismatch.")
-    st.exception(e)
-    st.stop()
+    forecast_df, payback_year = build_forecast(total_sales, opex["yearly_opex"], capex["net"], fin)
 
+    # ---- Display ----
+    tab_overview, tab_opex, tab_forecast = st.tabs(["Overview", "OPEX", "Forecast & Cashflow"])
 
-# ---------------------------------------------------------------------
-# Main page UI
-# ---------------------------------------------------------------------
-vw_section("Overview")
+    with tab_overview:
+        vw_section("Farm summary")
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Floor area (m²)", f"{areas['floor_area']:,.0f}")
+        m2.metric("Cultivable / floor (m²)", f"{areas['cultivable_per_floor']:,.0f}")
+        m3.metric("Total cultivatable (m²)", f"{areas['total_cultivatable']:,.0f}")
+        m4.metric("Floors", f"{farm.floors}")
 
-m1, m2, m3, m4 = st.columns(4)
-m1.metric("Total cultivatable area", f"{areas['total_cultivatable']:,.0f} m²")
-m2.metric("Total yearly sales", eur(total_sales))
-m3.metric("Total CAPEX (net)", eur(capex["net"]))
-m4.metric("Payback year", str(payback_year) if payback_year is not None else "—")
+        vw_section("Yearly sales summary")
+        st.dataframe(sales_df.style.format({"Area (m²)": "{:,.0f}", "Revenue (€)": "€{:,.0f}"}), use_container_width=True)
+        st.metric("Total yearly sales", f"€{total_sales:,.0f}")
 
-tabs = st.tabs(["Overview", "OPEX", "Forecast & Cashflow"])
+        vw_section("CAPEX")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Total CAPEX (gross)", f"€{capex['gross']:,.0f}")
+        c2.metric("Subsidy", f"€{capex['subsidy']:,.0f}")
+        c3.metric("CAPEX (net)", f"€{capex['net']:,.0f}")
 
-# -------------------------
-# TAB: Overview
-# -------------------------
-with tabs[0]:
-    colA, colB = st.columns([1.2, 1.0], gap="large")
+        if payback_year is None:
+            st.info("Payback was not reached within the forecast horizon.")
+        else:
+            st.success(f"Estimated payback year: **Year {payback_year}**")
 
-    with colA:
-        vw_section("Yearly Sales Summary")
-        # show sales table nicely
-        df_show = sales_df.copy()
-        st.dataframe(df_show.style.format({"Area (m²)": "{:,.0f}", "Revenue (€)": "€{:,.0f}"}), use_container_width=True)
+    with tab_opex:
+        vw_section("Electricity and operating costs")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Electricity use (kWh/year)", f"{opex['elec_use_kwh']:,.0f}")
+        c2.metric("Price used (€/kWh)", f"{opex['price_used']:.3f}")
+        c3.metric("Electricity cost (€)", f"€{opex['elec_cost']:,.0f}")
 
-    with colB:
-        vw_section("CAPEX Breakdown")
-        capex_break = pd.DataFrame(
-            [
-                ("Building", capex["build"]),
-                ("Equipment", capex["eq"]),
-                ("Other fixed", capex["other"]),
-                ("Subsidy (estimate)", -capex["subsidy"]),
-                ("Net CAPEX", capex["net"]),
-            ],
-            columns=["Item", "€"],
+        st.divider()
+        c4, c5 = st.columns(2)
+        c4.metric("Other OPEX (€)", f"€{opex['other_opex']:,.0f}")
+        c5.metric("Total yearly OPEX (€)", f"€{opex['yearly_opex']:,.0f}")
+
+        with st.expander("Compare base vs optimised"):
+            st.write(
+                {
+                    "elec_cost_base": opex.get("elec_cost_base"),
+                    "elec_cost_opt": opex.get("elec_cost_opt"),
+                    "yearly_opex_base": opex.get("yearly_opex_base"),
+                    "yearly_opex_opt": opex.get("yearly_opex_opt"),
+                }
+            )
+
+    with tab_forecast:
+        vw_section("Forecast table")
+        st.dataframe(
+            forecast_df.style.format(
+                {
+                    "Net Cashflow (€)": "€{:,.0f}",
+                    "Discounted (€)": "€{:,.0f}",
+                    "Cumulative NPV (€)": "€{:,.0f}",
+                    "NPV - CAPEX (€)": "€{:,.0f}",
+                }
+            ),
+            use_container_width=True,
         )
-        st.dataframe(capex_break.style.format({"€": "€{:,.0f}"}), use_container_width=True)
 
-        st.caption(
-            "CAPEX subsidy and unit costs come from your `config.py` values "
-            "(kept ‘hidden’ from the UI, as intended)."
-        )
-
-# -------------------------
-# TAB: OPEX
-# -------------------------
-with tabs[1]:
-    vw_section("Operating Expenses (Yearly)")
-
-    col1, col2 = st.columns([1, 1], gap="large")
-
-    with col1:
-        st.metric("Electricity usage", kwh(opex["elec_use_kwh"]))
-        st.metric("Electricity price used", f"€{opex['price_used']:.3f} / kWh")
-        st.metric("Electricity cost", eur(opex["elec_cost"]))
-
-    with col2:
-        st.metric("Other OPEX", eur(opex["other_opex"]))
-        st.metric("Total yearly OPEX", eur(opex["yearly_opex"]))
+        vw_section("NPV - CAPEX over time")
+        st.line_chart(forecast_df.set_index("Year")["NPV - CAPEX (€)"])
 
     st.markdown("---")
-    vw_section("Scenario comparison")
-
-    compare = pd.DataFrame(
-        [
-            ("Base", opex["elec_cost_base"], opex["yearly_opex_base"]),
-            ("Optimised", opex["elec_cost_opt"], opex["yearly_opex_opt"]),
-        ],
-        columns=["Scenario", "Electricity (€)", "Total OPEX (€)"],
-    )
-    st.dataframe(compare.style.format({"Electricity (€)": "€{:,.0f}", "Total OPEX (€)": "€{:,.0f}"}), use_container_width=True)
-
-# -------------------------
-# TAB: Forecast
-# -------------------------
-with tabs[2]:
-    vw_section("Forecast (Discounted Cashflow)")
-
-    st.dataframe(
-        forecast_df.style.format(
-            {
-                "Net Cashflow (€)": "€{:,.0f}",
-                "Discounted (€)": "€{:,.0f}",
-                "Cumulative NPV (€)": "€{:,.0f}",
-                "NPV - CAPEX (€)": "€{:,.0f}",
-            }
-        ),
-        use_container_width=True,
-    )
-
-    # Optional: quick line chart
-    vw_section("NPV trajectory")
-    chart_df = forecast_df.set_index("Year")[["NPV - CAPEX (€)"]]
-    st.line_chart(chart_df)
-
-    if payback_year is not None:
-        st.success(f"Payback occurs in year {payback_year} (discounted).")
-    else:
-        st.info("Payback not reached within the forecast horizon.")
+    st.caption("VacuumWood • Vertical Farming Financial Model")
 
 
-st.markdown("---")
-st.caption("VacuumWood • Vertical Farming Financial Model")
+if __name__ == "__main__":
+    main()

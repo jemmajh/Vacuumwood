@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 from pathlib import Path
 
-
 BASE_DIR = Path(__file__).resolve().parents[1]   # -> VerticalFarmModel/
 REPORT_DIR = BASE_DIR / "data" / "optimization_reports"
 
@@ -10,20 +9,18 @@ REPORT_DIR = BASE_DIR / "data" / "optimization_reports"
 def load_yearly_summary(photoperiod: int) -> pd.DataFrame:
     path = REPORT_DIR / f"thesis_yearly_summary_{photoperiod}h.csv"
     if not path.exists():
-        st.error(f"Missing file: {path.name}. Make sure it is committed to GitHub.")
         return pd.DataFrame()
     return pd.read_csv(path)
 
 @st.cache_data
 def load_daily_report(hours_needed: int) -> pd.DataFrame:
     path = REPORT_DIR / f"thesis_daily_report_{hours_needed}h.csv"
-    if path.exists():
-        return pd.read_csv(path, parse_dates=["date"])
-    return pd.DataFrame()
+    if not path.exists():
+        return pd.DataFrame()
+    return pd.read_csv(path, parse_dates=["date"])
 
 st.title("Electricity Optimization (Photoperiod Scheduling)")
 
-# --- Controls
 colA, colB, colC = st.columns([1, 1, 2])
 with colA:
     photoperiod = st.selectbox("Photoperiod (hours/day)", [14, 16, 18], index=1)
@@ -33,92 +30,79 @@ with colC:
     st.caption("Continuous = cheapest consecutive hours (wraps across midnight). Sparse = cheapest individual hours (upper bound).")
 
 yearly = load_yearly_summary(photoperiod)
+if yearly.empty:
+    st.error(
+        f"Missing yearly summary CSV for {photoperiod}h.\n\n"
+        f"Expected file:\n{(REPORT_DIR / f'thesis_yearly_summary_{photoperiod}h.csv').as_posix()}\n\n"
+        "Fix: commit the file into the repo (data/optimization_reports/) and redeploy."
+    )
+    st.stop()
 
-year = st.selectbox("Select year (for example scenario)", sorted(yearly["year"].unique()), index=len(yearly["year"].unique())-1)
+# year selector (safe)
+years = sorted(yearly["year"].unique())
+year = st.selectbox("Select year (for example scenario)", years, index=len(years) - 1)
 
 row = yearly[yearly["year"] == year].iloc[0]
 
-# --- Connect your model here:
-# Replace this with your actual computed yearly electricity use (kWh/year)
-# Example: kwh_year = st.session_state.get("kwh_year_total", 1_000_000)
+# Read kWh from session (if available)
 kwh_year = st.session_state.get("elec_use_kwh", None)
+
 baseline_price = float(row["avg_price_year_eur_kwh"])
-fixed_price = float(row["fixed_price_year_eur_kwh"]) if "fixed_price_year_eur_kwh" in row else None
+fixed_price = float(row["fixed_price_year_eur_kwh"]) if "fixed_price_year_eur_kwh" in yearly.columns else None
 cont_price = float(row["continuous_price_year_eur_kwh"])
 sparse_price = float(row["sparse_price_year_eur_kwh"])
+
+# If kwh_year is missing, show prices only + instructions
+if kwh_year is None:
+    st.warning(
+        "I can’t compute €/year costs because `elec_use_kwh` is not available yet.\n\n"
+        "Fix: open the main **app** page first (it should compute OPEX and set `st.session_state['elec_use_kwh']`)."
+    )
+    kwh_year = 0.0  # prevent crashes; money numbers will be 0
 
 baseline_cost = kwh_year * baseline_price
 cont_cost = kwh_year * cont_price
 sparse_cost = kwh_year * sparse_price
+fixed_cost = (kwh_year * fixed_price) if fixed_price is not None else None
 
-# If your yearly report didn’t include fixed schedule (some older file versions), we compute fallback:
-if fixed_price is None:
-    fixed_cost = None
-else:
-    fixed_cost = kwh_year * fixed_price
-
-# --- Metrics row
+# Metrics
 m1, m2, m3, m4 = st.columns(4)
 m1.metric("Baseline (avg) €/kWh", f"{baseline_price:.4f}")
-m2.metric("Continuous optimized €/kWh", f"{cont_price:.4f}", f"-{row['continuous_savings_pct']:.1f}%")
-m3.metric("Sparse optimized €/kWh", f"{sparse_price:.4f}", f"-{row['sparse_savings_pct']:.1f}%")
-
-if fixed_price is not None:
-    fixed_savings_pct = float(row["fixed_savings_pct"])
-    m4.metric("Fixed schedule €/kWh", f"{fixed_price:.4f}", f"-{fixed_savings_pct:.1f}%")
-else:
-    m4.metric("Fixed schedule €/kWh", "—", "Add fixed to summary")
+m2.metric("Continuous optimized €/kWh", f"{cont_price:.4f}")
+m3.metric("Sparse optimized €/kWh", f"{sparse_price:.4f}")
+m4.metric("Fixed schedule €/kWh", f"{fixed_price:.4f}" if fixed_price is not None else "—")
 
 st.divider()
 
-# --- Money impact
+# Money impact
 col1, col2 = st.columns([1, 1])
-
 with col1:
     st.subheader("Annual cost comparison")
     cost_rows = [
-        {"Mode": "Do nothing (avg)", "€/year": baseline_cost, "Savings €/year": 0.0, "Savings %": 0.0},
-        {"Mode": "Continuous optimized", "€/year": cont_cost,
-         "Savings €/year": baseline_cost - cont_cost,
-         "Savings %": 100.0 * (baseline_cost - cont_cost) / baseline_cost if baseline_cost else 0.0},
-        {"Mode": "Sparse optimized (upper bound)", "€/year": sparse_cost,
-         "Savings €/year": baseline_cost - sparse_cost,
-         "Savings %": 100.0 * (baseline_cost - sparse_cost) / baseline_cost if baseline_cost else 0.0},
+        {"Mode": "Do nothing (avg)", "€/year": baseline_cost},
+        {"Mode": "Continuous optimized", "€/year": cont_cost},
+        {"Mode": "Sparse optimized (upper bound)", "€/year": sparse_cost},
     ]
     if fixed_cost is not None:
-        cost_rows.insert(1, {"Mode": f"Fixed schedule (start {fixed_start_hour:02d}:00)", "€/year": fixed_cost,
-                             "Savings €/year": baseline_cost - fixed_cost,
-                             "Savings %": 100.0 * (baseline_cost - fixed_cost) / baseline_cost if baseline_cost else 0.0})
+        cost_rows.insert(1, {"Mode": f"Fixed schedule (start {fixed_start_hour:02d}:00)", "€/year": fixed_cost})
 
-    cost_df = pd.DataFrame(cost_rows)
-    st.dataframe(cost_df, use_container_width=True)
+    st.dataframe(pd.DataFrame(cost_rows), use_container_width=True)
 
 with col2:
     st.subheader("Historical yearly summary")
-    show_cols = [
-        "year",
-        "avg_price_year_eur_kwh",
-        "continuous_price_year_eur_kwh",
-        "continuous_savings_pct",
-        "sparse_price_year_eur_kwh",
-        "sparse_savings_pct",
-    ]
-    if "fixed_price_year_eur_kwh" in yearly.columns:
-        show_cols.insert(2, "fixed_price_year_eur_kwh")
-        show_cols.insert(3, "fixed_savings_pct")
-
-    st.dataframe(yearly[show_cols], use_container_width=True)
+    st.dataframe(yearly, use_container_width=True)
 
 st.divider()
 
-# --- Optional: daily schedule lookup (super persuasive in demos)
 daily = load_daily_report(photoperiod)
 if not daily.empty:
     st.subheader("Daily recommended hours (from historical data)")
-    st.session_state["base_price_eur_kwh"] = baseline_price
-    st.session_state["opt_price_eur_kwh"] = cont_price
-    date_choice = st.date_input("Pick a date", value=daily["date"].min().date(),
-                                min_value=daily["date"].min().date(), max_value=daily["date"].max().date())
+    date_choice = st.date_input(
+        "Pick a date",
+        value=daily["date"].min().date(),
+        min_value=daily["date"].min().date(),
+        max_value=daily["date"].max().date(),
+    )
     day_row = daily[daily["date"].dt.date == date_choice]
     if not day_row.empty:
         r = day_row.iloc[0]
@@ -126,8 +110,7 @@ if not daily.empty:
         st.write(f"**Continuous window start:** {int(r['continuous_start_hour']):02d}:00")
         st.write(f"**Continuous hours:** {r['continuous_hours']}")
         st.write(f"**Sparse hours:** {r['sparse_hours']}")
-        st.write(f"**Continuous savings:** {r['continuous_savings_pct']:.1f}% | **Sparse savings:** {r['sparse_savings_pct']:.1f}%")
     else:
-        st.info("No row for that date (possible missing-hour days).")
+        st.info("No row for that date.")
 else:
     st.info("Daily report file not found. Add thesis_daily_report_XXh.csv to enable day-by-day viewing.")
