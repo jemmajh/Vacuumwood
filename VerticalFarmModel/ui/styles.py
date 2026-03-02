@@ -1,46 +1,92 @@
-# ui/styles.py
 import streamlit as st
 
-def apply_branding():
-    st.set_page_config(page_title="Vacuumwood Financial Model", layout="wide")
+from ui.styles import apply_branding, vw_section
 
-    st.markdown(
-        """
-        <style>
-            .vw-logo { font-weight:700; font-size:42px; line-height:1.1; letter-spacing:4px; }
-            .vw-black { color:#000000; }
-            .vw-green { color:#3CB371; }
-            .vw-container { text-align:center; margin-top:10px; margin-bottom:4px; }
 
-            .stButton > button { background-color:#3CB371; color:white; border-radius:6px; border:none; padding:0.4rem 1rem; font-weight:600; }
-            .stButton > button:hover { background-color:#34a165; }
+# -----------------------------
+# Page config (must be first Streamlit call)
+# -----------------------------
+st.set_page_config(
+    page_title="VacuumWood Financial Model",
+    layout="wide",
+    initial_sidebar_state="collapsed",  # hides the big input sidebar feeling
+)
 
-            [data-testid="stSidebar"] { background-color:#F4F4F4 !important; }
-            [data-testid="stSidebar"] * { color:#000 !important; }
-            [data-testid="stSidebar"] h2 { color:#3CB371 !important; }
+# Branding header (logo)
+apply_branding()
 
-            thead tr th { background-color:#0E1A25 !important; color:#fff !important; font-weight:600; }
-            tbody tr:nth-child(even) { background-color:#F5F7FA !important; }
-            tbody tr:nth-child(odd) { background-color:#FFFFFF !important; }
-            tbody tr:hover { background-color:#E3F3EB !important; }
-        </style>
-        <div class="vw-container">
-            <div class="vw-logo">
-                <span class="vw-black">V A C U U M</span><br>
-                <span class="vw-black">W O O D.</span><br>
-                <span class="vw-green">T E C H</span>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True
+# Optional: remove Streamlit top padding a bit
+st.markdown(
+    """
+    <style>
+      .block-container { padding-top: 1.2rem; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+# -----------------------------
+# Main content (no big input UI)
+# -----------------------------
+vw_section("Financial Model Summary")
+
+st.write(
+    "This dashboard shows the latest baseline outputs from the financial model. "
+    "Use the **electricity optimization** page for historical Nordpool scheduling."
+)
+
+# Layout
+col1, col2, col3 = st.columns(3)
+
+# You can plug your real model outputs here.
+# For now, we try to import and compute; if something fails, we show a readable error.
+try:
+    # Import your own project modules (adjust if your function names differ)
+    import config
+    from core.model import build_model_outputs  # <-- if your project has a different function name, tell me
+    # Example: outputs = build_model_outputs(config.DEFAULT_PARAMS)
+
+    outputs = build_model_outputs()  # simplest call; change if needed
+
+    # Expected outputs structure (example):
+    # outputs = {
+    #   "total_yearly_sales": 1471500,
+    #   "total_capex": 4025000,
+    #   "payback_years": 6.2,
+    #   "notes": "...",
+    # }
+
+    with col1:
+        st.metric("Total Yearly Sales (€)", f"{outputs['total_yearly_sales']:,.0f}")
+
+    with col2:
+        st.metric("Total CAPEX (€)", f"{outputs['total_capex']:,.0f}")
+
+    with col3:
+        if "payback_years" in outputs and outputs["payback_years"] is not None:
+            st.metric("Payback (years)", f"{outputs['payback_years']:.1f}")
+        else:
+            st.metric("Payback (years)", "—")
+
+    vw_section("Notes")
+    if "notes" in outputs and outputs["notes"]:
+        st.info(outputs["notes"])
+    else:
+        st.caption("No notes.")
+
+except Exception as e:
+    # This keeps the app “alive” even if your model import/function name isn't matching yet.
+    st.warning(
+        "I couldn’t run the model function from `core/model.py` yet. "
+        "This is normal if the function name/signature is different."
     )
+    st.caption("Fix: tell me what function you want to call to compute outputs, and what it returns.")
+    st.exception(e)
 
-def vw_section(title: str):
-    st.markdown(
-        f"""
-        <div style='font-size:18px; font-weight:700; color:#000; margin-top:22px; margin-bottom:8px;'>
-            • {title}
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+
+# -----------------------------
+# Footer
+# -----------------------------
+st.markdown("---")
+st.caption("VacuumWood • Vertical Farming Financial Model")
