@@ -169,8 +169,7 @@ farm = FarmInputs(
     length_m=float(length_m),
     width_m=float(width_m),
     height_m=float(height_m),
-    insulation_thickness_m=float(insulation),
-    floor_usage_eff=float(floor_usage_eff),
+    insulation_m=float(insulation),    floor_usage_eff=float(floor_usage_eff),
     floors=int(floors),
 )
 
