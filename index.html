@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <base target="_top">
+    <!-- Bootstrap 5 CSS (for grid, cards, buttons) -->
+    <link
+            href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+            rel="stylesheet"
+            integrity="sha384-9ndCyUa6mM+Y7vIvYemJMZ+3pH2QxQRYcEzplxMvqr+1C6ztVVNPNZt3gozCeFyX"
+            crossorigin="anonymous"
+    >
+    <!-- Chart.js for interactive plotting -->
+    <script
+            src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"
+            integrity="sha384-3S7WB2v7dj26CH8XXKp8lpD4nY7DcgxN1IzSXuWdhCWjkc2/DvWQr2cjnVEP4r32"
+            crossorigin="anonymous">
+    </script>
+
+    <style>
+        /* Desktop-only fixed sidebar / main layout */
+        html, body {
+          height: 100%;
+          margin: 0;
+          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+          background-color: #f0f2f6;
+        }
+        #wrapper {
+          display: flex;
+          height: 100%;
+        }
+        /* Sidebar: fixed width, scrollable if contents overflow */
+        #sidebar {
+          width: 300px;
+          background-color: #fff;
+          border-right: 1px solid #dee2e6;
+          overflow-y: auto;
+          padding: 1rem;
+          box-shadow: 2px 0 5px rgba(0,0,0,0.05);
+        }
+        /* Main content: takes remaining width, scrollable vertically */
+        #main {
+          flex: 1;
+          padding: 1.5rem;
+          overflow-y: auto;
+        }
+        /* Card styling for each section */
+        .card-section {
+          margin-bottom: 1.5rem;
+          border-radius: 0.5rem;
+          box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+        }
+        .card-section .card-header {
+          background-color: #ffffff;
+          font-weight: 600;
+        }
+        .card-section .card-body {
+          background-color: #ffffff;
+        }
+        /* Full-width “Recalculate” button in sidebar */
+        #recalcBtn {
+          width: 100%;
+          margin-top: 1rem;
+        }
+        /* Results heading and spacing */
+        #results .result-item {
+          margin-bottom: 0.75rem;
+          font-size: 1rem;
+        }
+        #results h3 {
+          margin-bottom: 1rem;
+          font-weight: 600;
+        }
+        /* Ensure chart canvas takes up space */
+        #chart-container {
+          margin-top: 2rem;
+        }
+        #forecastChart {
+          max-width: 100%;
+          height: 400px;
+        }
+    </style>
+</head>
+
+<body>
+<!-- Wrapper flex container: sidebar + main -->
+<div id="wrapper">
+
+    <!-- ========== SIDEBAR (INPUTS) ========== -->
+    <div id="sidebar">
+        <h4 class="mb-3">Inputs</h4>
+
+        <!-- 1) Farm & Building Parameters -->
+        <div class="card card-section">
+            <div class="card-header">Farm &amp; Building</div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label for="length" class="form-label">Inner Length (m)</label>
+                    <input type="number" class="form-control" id="length"
+                           value="<?= input_length ?>" step="0.1">
+                </div>
+                <div class="mb-3">
+                    <label for="width" class="form-label">Inner Width (m)</label>
+                    <input type="number" class="form-control" id="width"
+                           value="<?= input_width ?>" step="0.1">
+                </div>
+                <div class="mb-3">
+                    <label for="height" class="form-label">Inner Height (m)</label>
+                    <input type="number" class="form-control" id="height"
+                           value="<?= input_height ?>" step="0.1">
+                </div>
+                <div class="mb-3">
+                    <label for="floorEff" class="form-label">Floor Usage Efficiency (0–1)</label>
+                    <input type="number" class="form-control" id="floorEff"
+                           value="<?= input_floorEff ?>" min="0" max="1" step="0.01">
+                </div>
+                <div class="mb-3">
+                    <label for="floors" class="form-label">Number of Floors</label>
+                    <input type="number" class="form-control" id="floors"
+                           value="<?= input_floors ?>" step="1">
+                </div>
+            </div>
+        </div>
+
+        <!-- 2) Products & Yields -->
+        <div class="card card-section">
+            <div class="card-header">Products &amp; Yields</div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label for="lettuceShare" class="form-label">Lettuce % of Area (0–1)</label>
+                    <input type="number" class="form-control" id="lettuceShare"
+                           value="<?= input_lettuceShare ?>" min="0" max="1" step="0.01">
+                </div>
+                <div class="mb-3">
+                    <label for="yieldLettuce" class="form-label">Lettuce Yield (kg/m²/yr)</label>
+                    <input type="number" class="form-control" id="yieldLettuce"
+                           value="<?= input_yield_lettuce ?>" step="0.1">
+                </div>
+                <div class="mb-3">
+                    <label for="priceLettuce" class="form-label">Lettuce Price (€ / kg)</label>
+                    <input type="number" class="form-control" id="priceLettuce"
+                           value="<?= input_price_lettuce ?>" step="0.01">
+                </div>
+                <div class="mb-3">
+                    <label for="yieldBasil" class="form-label">Basil Yield (kg/m²/yr)</label>
+                    <input type="number" class="form-control" id="yieldBasil"
+                           value="<?= input_yield_basil ?>" step="0.1">
+                </div>
+                <div class="mb-3">
+                    <label for="priceBasil" class="form-label">Basil Price (€ / kg)</label>
+                    <input type="number" class="form-control" id="priceBasil"
+                           value="<?= input_price_basil ?>" step="0.01">
+                </div>
+            </div>
+        </div>
+
+        <!-- 3) Initial Investment Costs -->
+        <div class="card card-section">
+            <div class="card-header">Investment Costs</div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label for="buildingCost" class="form-label">Building Cost (€)</label>
+                    <input type="number" class="form-control" id="buildingCost"
+                           value="<?= input_buildingCost ?>" step="1">
+                </div>
+                <div class="mb-3">
+                    <label for="equipmentCost" class="form-label">Equipment Cost (€)</label>
+                    <input type="number" class="form-control" id="equipmentCost"
+                           value="<?= input_equipmentCost ?>" step="1">
+                </div>
+                <div class="mb-3">
+                    <label for="otherCost" class="form-label">Other Cost (€)</label>
+                    <input type="number" class="form-control" id="otherCost"
+                           value="<?= input_otherCost ?>" step="1">
+                </div>
+                <div class="mb-3">
+                    <label for="subsidies" class="form-label">Subsidies (€)</label>
+                    <input type="number" class="form-control" id="subsidies"
+                           value="<?= input_subsidies ?>" step="1">
+                </div>
+            </div>
+        </div>
+
+        <!-- ========== YEARLY OPERATING COSTS ========== -->
+        <div class="card card-section">
+            <div class="card-header">Yearly Operating Costs</div>
+            <div class="card-body">
+                <!-- Electricity Cost -->
+                <div class="mb-3">
+                    <label for="electricityCost" class="form-label">Electricity (€)</label>
+                    <input type="number" class="form-control" id="electricityCost"
+                           value="<?= input_cost_electricity ?>" step="1">
+                </div>
+                <!-- Labor Cost -->
+                <div class="mb-3">
+                    <label for="laborCost" class="form-label">Labor (€)</label>
+                    <input type="number" class="form-control" id="laborCost"
+                           value="<?= input_cost_labor ?>" step="1">
+                </div>
+                <!-- Other Operating Costs -->
+                <div class="mb-3">
+                    <label for="otherOpsCost" class="form-label">Other Operating (€)</label>
+                    <input type="number" class="form-control" id="otherOpsCost"
+                           value="<?= input_cost_other_ops ?>" step="1">
+                </div>
+                <!-- Logistics Cost -->
+                <div class="mb-3">
+                    <label for="logisticsCost" class="form-label">Logistics (€)</label>
+                    <input type="number" class="form-control" id="logisticsCost"
+                           value="<?= input_cost_logistics ?>" step="1">
+                </div>
+                <!-- Maintenance Cost -->
+                <div class="mb-3">
+                    <label for="maintenanceCost" class="form-label">Building Maintenance (€)</label>
+                    <input type="number" class="form-control" id="maintenanceCost"
+                           value="<?= input_cost_maintenance ?>" step="1">
+                </div>
+            </div>
+        </div>
+
+        <!-- 4) Forecast & Payback -->
+        <div class="card card-section mb-4">
+            <div class="card-header">Forecast &amp; Payback</div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label for="discountRate" class="form-label">Discount Rate (0–1)</label>
+                    <input type="number" class="form-control" id="discountRate"
+                           value="<?= input_discountRate ?>" min="0" max="1" step="0.001">
+                </div>
+                <div class="mb-3">
+                    <label for="year1Eff" class="form-label">Year 1 Efficiency (0–1)</label>
+                    <input type="number" class="form-control" id="year1Eff"
+                           value="<?= input_year1Eff ?>" min="0" max="1" step="0.01">
+                </div>
+                <div class="mb-3">
+                    <label for="effGain" class="form-label">Annual Efficiency Gain</label>
+                    <input type="number" class="form-control" id="effGain"
+                           value="<?= input_effGain ?>" min="0" step="0.001">
+                </div>
+                <div class="mb-3">
+                    <label for="years" class="form-label">Forecast Years</label>
+                    <input type="number" class="form-control" id="years"
+                           value="<?= input_years ?>" step="1">
+                </div>
+            </div>
+        </div>
+
+        <!-- Recalculate Button -->
+        <button id="recalcBtn" class="btn btn-primary" onclick="recalculate()">
+            Recalculate
+        </button>
+    </div> <!-- /#sidebar -->
+
+    <!-- ========== MAIN CONTENT (RESULTS & CHART) ========== -->
+    <div id="main">
+        <h3>Results</h3>
+        <div id="results">
+            <!-- Numeric outputs will be injected here -->
+            <div class="result-item"><strong>Total Yearly Sales:</strong> €<span id="out_sales">0</span></div>
+            <div class="result-item"><strong>Total Yearly Costs:</strong> €<span id="out_costs">0</span></div>
+            <div class="result-item"><strong>Yearly Margin:</strong> €<span id="out_margin">0</span></div>
+            <div class="result-item"><strong>Payback Year:</strong> <span id="out_payback">–</span></div>
+        </div>
+
+        <!-- Chart Container (Line chart of Net vs. Cumulative) -->
+        <div id="chart-container">
+            <canvas id="forecastChart"></canvas>
+        </div>
+    </div> <!-- /#main -->
+</div> <!-- /#wrapper -->
+
+<!-- Bootstrap JS (optional) -->
+<script
+        src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"
+        integrity="sha384-ENjdO4Dr2bkBIFxQpeoZdbjIa1GzZh0P9dAQ69BlmFLiPrCHiZ+Y1zc8/fX9Zx7F"
+        crossorigin="anonymous">
+</script>
+
+<!-- Client‐side JavaScript to call updateFromWeb and draw the Chart.js graph -->
+<script>
+    let chart = null;
+
+    function recalculate() {
+      // Gather all the inputs from the sidebar form:
+      const params = {
+        length:        parseFloat(document.getElementById('length').value),
+        width:         parseFloat(document.getElementById('width').value),
+        height:        parseFloat(document.getElementById('height').value),
+        floorEff:      parseFloat(document.getElementById('floorEff').value),
+        floors:        parseInt(document.getElementById('floors').value),
+        lettuceShare:  parseFloat(document.getElementById('lettuceShare').value),
+        yieldLettuce:  parseFloat(document.getElementById('yieldLettuce').value),
+        priceLettuce:  parseFloat(document.getElementById('priceLettuce').value),
+        yieldBasil:    parseFloat(document.getElementById('yieldBasil').value),
+        priceBasil:    parseFloat(document.getElementById('priceBasil').value),
+        buildingCost:  parseFloat(document.getElementById('buildingCost').value),
+        equipmentCost: parseFloat(document.getElementById('equipmentCost').value),
+        otherCost:     parseFloat(document.getElementById('otherCost').value),
+        subsidies:     parseFloat(document.getElementById('subsidies').value),
+        electricityCost:   parseFloat(document.getElementById('electricityCost').value),
+        laborCost:         parseFloat(document.getElementById('laborCost').value),
+        otherOpsCost:      parseFloat(document.getElementById('otherOpsCost').value),
+        logisticsCost:     parseFloat(document.getElementById('logisticsCost').value),
+        maintenanceCost:   parseFloat(document.getElementById('maintenanceCost').value),
+        discountRate:  parseFloat(document.getElementById('discountRate').value),
+        year1Eff:      parseFloat(document.getElementById('year1Eff').value),
+        effGain:       parseFloat(document.getElementById('effGain').value),
+        years:         parseInt(document.getElementById('years').value)
+      };
+
+      // Call Apps Script function 'updateFromWeb'
+      google.script.run
+        .withSuccessHandler(function(result) {
+          // 1) Inject numeric outputs into the #results div:
+          document.getElementById('out_sales').innerText   = result.totalSales.toFixed(0);
+          document.getElementById('out_costs').innerText   = result.totalCosts.toFixed(0);
+          document.getElementById('out_margin').innerText  = result.yearlyMargin.toFixed(0);
+          document.getElementById('out_payback').innerText = result.paybackYear;
+
+          // 2) Draw (or update) the Chart.js line chart using result.forecast:
+          const years        = result.forecast.map(r => r.year);
+          const netValues    = result.forecast.map(r => r.net);
+          const cumValues    = result.forecast.map(r => r.cumSales);
+
+          // If chart already exists, destroy it so we can recreate with new data
+          if (chart) {
+            chart.destroy();
+          }
+
+          const ctx = document.getElementById('forecastChart').getContext('2d');
+          chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+              labels: years,
+              datasets: [
+                {
+                  label: 'Net (€)',
+                  data: netValues,
+                  borderColor: 'rgba(75, 192, 192, 1)',
+                  backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                  tension: 0.3,
+                  fill: false
+                },
+                {
+                  label: 'Cumulative (€)',
+                  data: cumValues,
+                  borderColor: 'rgba(54, 162, 235, 1)',
+                  backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                  tension: 0.3,
+                  fill: false
+                }
+              ]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              scales: {
+                x: {
+                  title: {
+                    display: true,
+                    text: 'Year'
+                  }
+                },
+                y: {
+                  title: {
+                    display: true,
+                    text: 'Amount (€)'
+                  },
+                  ticks: {
+                    // Show thousands separators
+                    callback: function(value) {
+                      return new Intl.NumberFormat().format(value);
+                    }
+                  }
+                }
+              },
+              plugins: {
+                tooltip: {
+                  callbacks: {
+                    label: function(context) {
+                      const formatted = new Intl.NumberFormat().format(context.parsed.y);
+                      return `${context.dataset.label}: €${formatted}`;
+                    }
+                  }
+                },
+                legend: {
+                  position: 'top'
+                }
+              }
+            }
+          });
+        })
+        .updateFromWeb(params);
+    }
+
+    // On first load, immediately call recalculate() so the user sees data right away:
+    window.addEventListener('DOMContentLoaded', recalculate);
+</script>
+</body>
+</html>
