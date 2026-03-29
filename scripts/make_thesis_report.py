@@ -3,7 +3,6 @@ from core.lighting_optimization import build_daily_report, yearly_summary_from_d
 
 df = pd.read_csv("electricity_prices_2013_2020.csv", parse_dates=["timestamp"])
 
-# Choose realistic daily lighting hours for vertical farming (common: 14–18)
 for hours_needed in [14, 16, 18]:
     daily = build_daily_report(df, hours_needed=hours_needed, fixed_start_hour=6)
     yearly = yearly_summary_from_daily(daily)
