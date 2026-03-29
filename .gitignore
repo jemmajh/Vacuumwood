@@ -8,12 +8,13 @@ venv311/
 # Data folders
 data/
 
+#Jupyter
+data/notebook/
+*.ipynb
+
 # Large files
 *.csv
 *.xml
-
-# Jupyter notebooks
-*.ipynb
 
 # Python cache
 __pycache__/
