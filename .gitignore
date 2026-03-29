@@ -5,6 +5,16 @@
 venv/
 venv311/
 
+# Data folders
+data/
+
+# Large files
+*.csv
+*.xml
+
+# Jupyter notebooks
+*.ipynb
+
 # Python cache
 __pycache__/
 *.pyc
