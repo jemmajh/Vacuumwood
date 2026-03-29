@@ -1,6 +1,6 @@
 import pandas as pd
 
-df = pd.read_csv("../data/nordpool_raw/electricity_prices_2013_2020.csv")
+df = pd.read_csv("data/nordpool_raw/electricity_prices_2013_2020.csv")
 
 df.rename(columns={
     "timestamp": "datetime",
@@ -42,7 +42,7 @@ df = df[
     ]
 ]
 
-df.to_csv("../data/nordpool_clean.csv", index=False)
+df.to_csv("data/nordpool_clean.csv", index=False)
 
 print("✅ Nordpool cleaned!")
 print(df.head())

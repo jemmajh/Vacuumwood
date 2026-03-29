@@ -2,29 +2,43 @@ import xml.etree.ElementTree as ET
 import pandas as pd
 import glob
 
-files = glob.glob("../data/entsoe_raw/entsoe_*.xml")
+files = glob.glob("data/entsoe_raw/entsoe_*.xml")
 
 all_data = []
 
 for file in files:
     print(f"Parsing {file}...")
+    try:
+        with open(file, "r") as f:
+            first_line = f.readline()
 
-    tree = ET.parse(file)
-    root = tree.getroot()
+        if not first_line.startswith("<?xml"):
+            print(f"❌ Skipping invalid file: {file}")
+            continue
 
-    ns = {'ns': root.tag.split('}')[0].strip('{')}
+        tree = ET.parse(file)
+        root = tree.getroot()
 
-    for ts in root.findall(".//ns:TimeSeries", ns):
-        for period in ts.findall(".//ns:Period", ns):
 
-            start_time = period.find("ns:timeInterval/ns:start", ns).text
 
-            for point in period.findall("ns:Point", ns):
+        ns = {'ns': root.tag.split('}')[0].strip('{')}
 
-                position = int(point.find("ns:position", ns).text)
-                price = float(point.find("ns:price.amount", ns).text)
+        for ts in root.findall(".//ns:TimeSeries", ns):
+            for period in ts.findall(".//ns:Period", ns):
 
-                all_data.append([start_time, position, price])
+                start_time = period.find("ns:timeInterval/ns:start", ns).text
+
+                for point in period.findall("ns:Point", ns):
+
+                    position = int(point.find("ns:position", ns).text)
+                    price = float(point.find("ns:price.amount", ns).text)
+
+                    all_data.append([start_time, position, price])
+
+    except Exception as e:
+        print(f"❌ Error parsing {file}: {e}")
+        continue
+
 
 if len(all_data) == 0:
     print("❌ No data extracted — check XML files")
@@ -70,7 +84,7 @@ df = df[
 df = df.sort_values("datetime").reset_index(drop=True)
 df["datetime"] = pd.to_datetime(df["datetime"], utc=True).dt.tz_convert("Europe/Helsinki")
 
-df.to_csv("../data/entsoe_clean_all.csv", index=False)
+df.to_csv("data/entsoe_clean_all.csv", index=False)
 
 print("🚀 SUCCESS — ENTOS-E data parsed correctly!")
 print(df.head())
