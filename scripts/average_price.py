@@ -1,7 +1,8 @@
 import pandas as pd
 import matplotlib.pyplot as plt
+import os
 
-df = pd.read_csv("../data/clean_data/electricity_prices_full.csv")
+df = pd.read_csv("data/clean_data/electricity_prices_full.csv")
 
 df["datetime"] = pd.to_datetime(df["datetime"])
 
@@ -18,7 +19,21 @@ for year in sorted(hourly_year["year"].unique()):
 plt.xlabel("Hour of Day")
 plt.ylabel("Average Price (€/kWh)")
 plt.title("Average Electricity Price by Hour (2013–2025)")
-plt.legend(ncol=4, fontsize=8)
-plt.grid()
+
+plt.xlim(0, 23)
+plt.xticks(range(0, 24))
+
+plt.legend(
+    loc="upper right",
+    fontsize=7,
+    ncol=2,
+    frameon=False
+)
+plt.grid(alpha=0.3)
+plt.tight_layout()
+
+os.makedirs("visualizations", exist_ok=True)
+plt.savefig("visualizations/hourly_price_by_year.png", dpi=300, bbox_inches="tight")
+
 
 plt.show()
