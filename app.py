@@ -11,8 +11,8 @@ ROOT = os.path.dirname(__file__)
 sys.path.insert(0, ROOT)
 
 import config as cfg
-from core.schemas import FarmInputs, CropInputs, FinanceInputs, ElectricityScenario
-from core.model import compute_areas, compute_sales, compute_capex, compute_opex, build_forecast
+from core.schemas import FarmInputs, CropInputs, FinanceInputs, ElectricityScenario, AdvancedFinanceInputs
+from core.model import compute_areas, compute_sales, compute_capex, compute_opex, build_forecast, build_advanced_forecast
 from core.validation import validate_inputs
 from core.lighting_optimization import build_daily_report, yearly_summary_from_daily
 from core.strategy_engine import compute_strategy_table, build_comparison_df
@@ -500,6 +500,189 @@ with tab1:
         disp_sales["Revenue (€)"] = disp_sales["Revenue (€)"].map(lambda x: f"€{x:,.0f}")
         disp_sales["Area (m²)"] = disp_sales["Area (m²)"].map(lambda x: f"{x:,.0f}")
         st.dataframe(disp_sales, use_container_width=True)
+
+    ## advanced scenario analysis
+    st.markdown('<div class="section-header">Advanced Scenario Analysis</div>', unsafe_allow_html=True)
+
+    st.markdown("""<div class="info-box">
+            <b>What this models that the basic forecast above does not:</b><br>
+            <b>① Crop revenue growth</b> — farm produce prices grow above general inflation
+            (premium positioning + supply constraints in vertical farming).<br>
+            <b>② Electricity price escalation</b> — Nord Pool FI spot prices trended +3%/yr
+            long-run; a +25% shock scenario tests resilience to spikes like 2021–2022.<br>
+            <b>③ LED replacement at year 5 &amp; 10</b> — LED grow lights last ~50,000 hours
+            (≈5 years at 18h/day). Replacement cost = 60% of equipment CapEx, deflating
+            5%/yr as LED hardware prices fall with technology learning curves.<br>
+            <b>④ Annual maintenance reserve</b> — 2.5% of equipment CapEx/yr for spares,
+            repairs and servicing. Grows with general inflation.
+        </div>""", unsafe_allow_html=True)
+
+    #  advanced inputs
+    with st.expander("⚙️  Advanced scenario assumptions", expanded=True):
+        adv_c1, adv_c2, adv_c3 = st.columns(3)
+        crop_growth = adv_c1.number_input("Crop price growth (%/yr)", 0.0, 15.0, cfg.DEFAULT_CROP_PRICE_GROWTH * 100,
+                                          0.5) / 100
+        elec_growth = adv_c2.number_input("Electricity price growth (%/yr)", 0.0, 15.0,
+                                          cfg.DEFAULT_ELEC_PRICE_GROWTH * 100, 0.5) / 100
+        gen_inflation = adv_c3.number_input("General inflation (%/yr)", 0.0, 10.0, cfg.DEFAULT_GENERAL_INFLATION * 100,
+                                            0.5) / 100
+
+        adv_c4, adv_c5 = st.columns(2)
+        maintenance_pct = adv_c4.number_input("Annual maintenance reserve (% of equip. CapEx)", 0.0, 10.0,
+                                              cfg.ANNUAL_MAINTENANCE_PCT * 100, 0.25) / 100
+        led_replacement_yr = adv_c5.multiselect("LED replacement at years", list(range(1, fin_years + 1)),
+                                                default=[y for y in cfg.LED_REPLACEMENT_YEARS if y <= fin_years])
+
+    adv_inputs = AdvancedFinanceInputs(
+        general_inflation=gen_inflation,
+        crop_price_growth=crop_growth,
+        elec_price_growth=elec_growth,
+        led_replacement_years=led_replacement_yr,
+        led_replacement_cost=capex["eq"] * cfg.LED_SHARE_OF_EQUIPMENT,
+        annual_maintenance_pct=maintenance_pct,
+    )
+
+    # run three scenarios: base / optimised elec / +25% elec shock
+    fc_adv_base, pb_adv_base = build_advanced_forecast(
+        total_sales, opex_base["yearly_opex"], opex_base["elec_cost"],
+        opex_base["other_opex"], capex["net"], capex["eq"], fin_in, adv_inputs,
+        elec_price_multiplier=1.0)
+
+    fc_adv_opt, pb_adv_opt = build_advanced_forecast(
+        total_sales, opex_opt["yearly_opex"], opex_opt["elec_cost"],
+        opex_opt["other_opex"], capex["net"], capex["eq"], fin_in, adv_inputs,
+        elec_price_multiplier=1.0)
+
+    fc_adv_shock, pb_adv_shock = build_advanced_forecast(
+        total_sales, opex_base["yearly_opex"], opex_base["elec_cost"],
+        opex_base["other_opex"], capex["net"], capex["eq"], fin_in, adv_inputs,
+        elec_price_multiplier=cfg.DEFAULT_ELEC_SHOCK_MULT)
+
+    #  payback comparison cards
+    st.markdown('<div class="section-header">Payback — Advanced vs Simple Model</div>',
+                unsafe_allow_html=True)
+
+    pb_c1, pb_c2, pb_c3, pb_c4 = st.columns(4)
+    pb_c1.markdown(f"""<div class="metric-card">
+            <div class="label">Simple model (base)</div>
+            <div class="value">Yr {payback_base or '—'}</div>
+            <div class="sub">no inflation / no LED replacement</div></div>""", unsafe_allow_html=True)
+    pb_c2.markdown(f"""<div class="metric-card">
+            <div class="label">Advanced — base elec</div>
+            <div class="value">Yr {pb_adv_base or '—'}</div>
+            <div class="sub">with inflation + LED replacement</div></div>""", unsafe_allow_html=True)
+    pb_c3.markdown(f"""<div class="metric-card">
+            <div class="label">Advanced — optimised elec</div>
+            <div class="value">Yr {pb_adv_opt or '—'}</div>
+            <div class="sub">with scheduling + LED replacement</div></div>""", unsafe_allow_html=True)
+    pb_c4.markdown(f"""<div class="metric-card">
+            <div class="label">Advanced — +25% elec shock</div>
+            <div class="value">Yr {pb_adv_shock or '>forecast'}</div>
+            <div class="sub">electricity price spike scenario</div></div>""", unsafe_allow_html=True)
+
+    #  advanced NPV chart — all 3 scenarios
+    st.markdown('<div class="section-header">10-Year NPV — Three Scenarios</div>',
+                unsafe_allow_html=True)
+
+    fig_adv = go.Figure()
+    fig_adv.add_hline(y=0, line_dash="dot", line_color="#999", line_width=1.5)
+
+    # simple base (grey reference)
+    fig_adv.add_trace(go.Scatter(
+        x=fc_base["Year"], y=fc_base["NPV - CAPEX (€)"],
+        mode="lines", name="Simple model (reference)",
+        line=dict(color="#cccccc", width=1.5, dash="dash"),
+    ))
+    # advanced base
+    fig_adv.add_trace(go.Scatter(
+        x=fc_adv_base["Year"], y=fc_adv_base["NPV - CAPEX (€)"],
+        mode="lines+markers", name="Advanced — base electricity",
+        line=dict(color="#f0a500", width=2), marker=dict(size=6),
+    ))
+    # advanced optimised
+    fig_adv.add_trace(go.Scatter(
+        x=fc_adv_opt["Year"], y=fc_adv_opt["NPV - CAPEX (€)"],
+        mode="lines+markers", name="Advanced — optimised electricity",
+        line=dict(color="#3CB371", width=2.5), marker=dict(size=7),
+        fill="tozeroy", fillcolor="rgba(60,179,113,0.08)",
+    ))
+    # +25% shock
+    fig_adv.add_trace(go.Scatter(
+        x=fc_adv_shock["Year"], y=fc_adv_shock["NPV - CAPEX (€)"],
+        mode="lines+markers", name="+25% electricity price shock",
+        line=dict(color="#e05050", width=2, dash="dot"), marker=dict(size=6),
+    ))
+
+    # annotate LED replacement years
+    for yr in led_replacement_yr:
+        if yr <= fin_years:
+            fig_adv.add_vline(x=yr, line_dash="dot", line_color="#aaa", line_width=1,
+                              annotation_text="LED replacement", annotation_position="top",
+                              annotation_font_size=10, annotation_font_color="#999")
+
+    fig_adv.update_layout(
+        height=420, margin=dict(t=20, b=40, l=60, r=10),
+        yaxis_title="Cumulative NPV − CapEx (€)",
+        xaxis_title="Year",
+        xaxis=dict(tickmode="linear", dtick=1),
+        legend=dict(orientation="h", y=-0.25),
+        plot_bgcolor="#fafafa", paper_bgcolor="white",
+        font=dict(family="Syne"),
+    )
+    st.plotly_chart(fig_adv, use_container_width=True)
+
+    #  cost escalation breakdown chart
+    st.markdown('<div class="section-header">Cost Escalation Over Time</div>',
+                unsafe_allow_html=True)
+
+    fig_costs = go.Figure()
+    fig_costs.add_trace(go.Scatter(
+        x=fc_adv_base["Year"], y=fc_adv_base["Elec Cost (€)"],
+        mode="lines+markers", name="Electricity cost",
+        line=dict(color="#f0a500", width=2), marker=dict(size=5),
+    ))
+    fig_costs.add_trace(go.Scatter(
+        x=fc_adv_base["Year"], y=fc_adv_base["Other OpEx (€)"],
+        mode="lines+markers", name="Other OpEx",
+        line=dict(color="#aaa", width=2), marker=dict(size=5),
+    ))
+    fig_costs.add_trace(go.Scatter(
+        x=fc_adv_base["Year"], y=fc_adv_base["Maintenance (€)"],
+        mode="lines+markers", name="Maintenance reserve",
+        line=dict(color="#1a6edb", width=2), marker=dict(size=5),
+    ))
+    fig_costs.add_trace(go.Bar(
+        x=fc_adv_base["Year"], y=fc_adv_base["LED Replacement (€)"],
+        name="LED replacement", marker_color="rgba(224,80,80,0.6)",
+    ))
+    fig_costs.add_trace(go.Scatter(
+        x=fc_adv_base["Year"], y=fc_adv_base["Revenue (€)"],
+        mode="lines+markers", name="Revenue",
+        line=dict(color="#3CB371", width=2.5), marker=dict(size=6),
+    ))
+    fig_costs.update_layout(
+        height=380, margin=dict(t=15, b=40, l=60, r=10),
+        yaxis_title="€/year",
+        xaxis_title="Year",
+        xaxis=dict(tickmode="linear", dtick=1),
+        legend=dict(orientation="h", y=-0.28),
+        plot_bgcolor="#fafafa", paper_bgcolor="white",
+        font=dict(family="Syne"),
+        barmode="overlay",
+    )
+    st.plotly_chart(fig_costs, use_container_width=True)
+
+    # advanced detailed table
+    with st.expander("Detailed advanced forecast table"):
+        fmt_cols = ["Revenue (€)", "Elec Cost (€)", "Other OpEx (€)", "Maintenance (€)",
+                    "LED Replacement (€)", "Net Cashflow (€)", "Discounted (€)",
+                    "Cumulative NPV (€)", "NPV - CAPEX (€)"]
+        disp_adv = fc_adv_opt.copy()
+        for col in fmt_cols:
+            disp_adv[col] = disp_adv[col].map(lambda x: f"€{x:,.0f}")
+        st.caption("Showing: Advanced — Optimised electricity scenario")
+        st.dataframe(disp_adv.set_index("Year"), use_container_width=True)
+
 
 #  TAB 2  –  ELECTRICITY OPTIMISATION
 with tab2:

@@ -39,3 +39,20 @@ DEFAULT_YEARS           = 10
 
 # Lighting strategy hours default
 DEFAULT_LIGHT_HOURS_DAY = 18  # 6570 / 365 ≈ 18 h/day
+
+# Inflation & growth rates
+DEFAULT_GENERAL_INFLATION = 0.02  # 2%/yr — general cost inflation (EU average)
+DEFAULT_CROP_PRICE_GROWTH = 0.04  # 4%/yr — crop revenue grows faster than inflation
+# (2% inflation + 2% premium pricing trend)
+DEFAULT_ELEC_PRICE_GROWTH = 0.03  # 3%/yr — electricity price growth assumption
+DEFAULT_ELEC_SHOCK_MULT = 1.25  # +25% electricity price shock scenario
+
+# LED replacement (from Takaisinmaksu "Replace Invest." column in Excel)
+# Excel shows replacement costs at years 4,5,6 (€50k each), year 7 (€100k), years 8,9 (€25k each)
+# We model this as a full LED cycle replacement every 5 years
+LED_REPLACEMENT_YEARS = [5, 10]  # replacement at year 5 and year 10
+LED_SHARE_OF_EQUIPMENT = 0.60  # ~60% of equipment CapEx is LED lighting
+# (80W LED arrays dominate equipment cost)
+# Annual maintenance reserve
+ANNUAL_MAINTENANCE_PCT = 0.025  # 2.5% of equipment CapEx per year
+# industry standard for controlled environment ag
