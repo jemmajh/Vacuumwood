@@ -248,13 +248,14 @@ with tab1:
     ep1, ep2 = st.columns([1, 2])
     with ep1:
         scenario_choice = st.radio(
-            "Select electricity scenario",
-            ["Base (no optimisation)", "Continuous block", "Sparse (cheapest hours)"],
+            "Electricity scenario",
+            ["Base price", "Optimised (best strategy)"],
             index=0,
+            horizontal=True,
         )
         st.markdown(f"""<div class="info-box">
-            <b>Continuous block</b> saves ~<b>{saving_cont:.1f}%</b> vs baseline<br>
-            <b>Sparse strategy</b> saves ~<b>{saving_spar:.1f}%</b> vs baseline<br>
+            Optimised price based on best available strategy.<br>
+            Potential saving: <b>{max(saving_cont, saving_spar):.1f}%</b> vs base<br>
             <small>Based on 2013–2025 Nord Pool FI spot prices</small>
         </div>""", unsafe_allow_html=True)
 
@@ -269,14 +270,12 @@ with tab1:
                                           help="Populated from Electricity Optimisation tab")
 
     scenario_map = {
-        "Base (no optimisation)": "base",
-        "Continuous block": "opt",
-        "Sparse (cheapest hours)": "opt",
+        "Base price":                "base",
+        "Optimised (best strategy)": "opt",
     }
     opt_price_used = {
-        "Base (no optimisation)": base_price_input,
-        "Continuous block": cont_price_default,
-        "Sparse (cheapest hours)": spar_price_default,
+        "Base price":                base_price_input,
+        "Optimised (best strategy)": min(cont_price_default, spar_price_default),
     }[scenario_choice]
 
     scenario = ElectricityScenario(
@@ -393,7 +392,7 @@ with tab1:
             font=dict(size=16, family="Syne", color="#111"),
         )
         fig_donut.update_layout(
-            height=300, margin=dict(t=10, b=10, l=10, r=10),
+            height=300, margin=dict(t=30, b=10, l=10, r=10),
             showlegend=False, paper_bgcolor="white",
             title=dict(text="Base OpEx split", font=dict(size=13, family="Syne"), x=0.5),
         )
