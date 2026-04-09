@@ -28,6 +28,12 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed",
 )
+st.markdown("""
+<div class="navbar">
+  <div class="navbar-logo">VACUUM WOOD.<span> TECH</span></div>
+  <div class="navbar-title">Vertical Farm Financial Model</div>
+</div>
+""", unsafe_allow_html=True)
 
 # ── custom CSS ────────────────────────────────────────────────────────────────
 st.markdown("""
@@ -48,6 +54,20 @@ st.markdown("""
   .vw-black { color: #000000; }
   .vw-green { color: #3CB371; }
 
+  /* ── fixed top navbar ── */
+  .navbar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 9999;
+    background: #000000; padding: 6px 24px;
+    display: flex; align-items: center; justify-content: space-between;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  }
+  .navbar-logo { font-family: 'Barlow Condensed', sans-serif; font-weight: 700;
+               font-size: 18px; letter-spacing: 3px; color: #fff; }
+  .navbar-logo span { color: #3CB371; }
+  .navbar-title { font-family: 'Syne', sans-serif; font-size: 12px;
+                color: #888; letter-spacing: 1px; text-transform: uppercase; }
+  
+  
   /* metric cards */
   .metric-card { background: #f8faf9; border: 1.5px solid #e0ece6; border-radius: 12px;
                  padding: 1.1rem 1.3rem; text-align: center; }
@@ -78,17 +98,17 @@ st.markdown("""
 
   /* strategy bar highlight */
   .best-strategy { background:#e6f5ed; border:2px solid #2D9C5C; border-radius:10px; padding:0.8rem 1rem; }
-</style>
-""", unsafe_allow_html=True)
+  </style>
+  """, unsafe_allow_html=True)
 
 # ── logo ──────────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="vw-container" aria-label="VacuumWood logo">
-  <div class="vw-logo">
-    <div class="vw-black">VACUUM</div>
-    <div class="vw-black">WOOD.</div>
-    <div class="vw-green">TECH</div>
-  </div>
+    <div class="vw-logo">
+      <div class="vw-black">VACUUM</div>
+      <div class="vw-black">WOOD.</div>
+      <div class="vw-green">TECH</div>
+    </div>
 </div>
 """, unsafe_allow_html=True)
 
