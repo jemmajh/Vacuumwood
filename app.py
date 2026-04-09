@@ -43,21 +43,7 @@ st.markdown("""
   .vw-black { color: #000000; }
   .vw-green { color: #3CB371; }
 
-  /* ── fixed top navbar ── */
-  .navbar { position:fixed; top:0; left:0; right:0; z-index:9999;
-            background:#ffffff; padding:6px 24px; display:flex;
-            align-items:center; justify-content:space-between;
-            box-shadow:0 2px 8px rgba(0,0,0,0.08);
-            opacity:0; transition: opacity 0.3s ease; }
-  .navbar-logo { font-family:'Barlow Condensed',sans-serif; font-weight:700;
-                 font-size:18px; letter-spacing:3px; color:#000; }
-  .navbar-logo span { color:#3CB371; }
-  .navbar-title { font-family:'Syne',sans-serif; font-size:12px;
-                  color:#888; letter-spacing:1px; text-transform:uppercase; }
-                    
-  header[data-testid="stHeader"] { background: transparent !important; }
-  .block-container { padding-top: 5rem !important; }
-  
+
   /* metric cards */
   .metric-card { background: #f8faf9; border: 1.5px solid #e0ece6; border-radius: 12px;
                  padding: 1.1rem 1.3rem; text-align: center; }
@@ -91,25 +77,6 @@ st.markdown("""
   </style>
   """, unsafe_allow_html=True)
 
-st.markdown("""
-<div class="navbar">
-  <div class="navbar-logo">VACUUM WOOD.<span> TECH</span></div>
-  <div class="navbar-title">Vertical Farm Financial Model</div>
-</div>
-
-<script>
-const navbar = document.getElementById('navbar');
-window.addEventListener('scroll', function() {
-  if (window.scrollY > 300) {
-    navbar.style.opacity = '1';
-    navbar.style.pointerEvents = 'auto';
-  } else {
-    navbar.style.opacity = '0';
-    navbar.style.pointerEvents = 'none';
-  }
-}, true);
-</script>
-""", unsafe_allow_html=True)
 
 # ── logo ──────────────────────────────────────────────────────────────────────
 st.markdown("""
