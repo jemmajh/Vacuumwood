@@ -32,15 +32,15 @@ st.set_page_config(
 # ── custom CSS ────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Barlow+Condensed:wght@700&family=Syne:wght@400;600;700;800&display=swap');
 
   html, body, [class*="css"] { font-family: 'Syne', sans-serif; }
 
   .block-container { padding-top: 1.8rem !important; padding-bottom: 2rem !important; }
 
   /* logo */
-  .vw-logo { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 38px;
-             letter-spacing: 5px; line-height: 1.1; text-align: center; padding: 0.5rem 0 1.2rem; }
+.vw-logo { font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 42px;
+           letter-spacing: 4px; line-height: 1.1; }
   .vw-black { color: #111; }
   .vw-green { color: #2D9C5C; }
 
