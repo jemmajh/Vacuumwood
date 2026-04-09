@@ -1,8 +1,3 @@
-"""
-Vertical Farm Dashboard  –  unified Streamlit application
-Tabs: Farm Setup | Electricity Optimization | Strategy Comparison | Financial Model
-"""
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -28,12 +23,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed",
 )
-st.markdown("""
-<div class="navbar">
-  <div class="navbar-logo">VACUUM WOOD.<span> TECH</span></div>
-  <div class="navbar-title">Vertical Farm Financial Model</div>
-</div>
-""", unsafe_allow_html=True)
 
 # ── custom CSS ────────────────────────────────────────────────────────────────
 st.markdown("""
@@ -101,6 +90,13 @@ st.markdown("""
   </style>
   """, unsafe_allow_html=True)
 
+st.markdown("""
+<div class="navbar">
+  <div class="navbar-logo">VACUUM WOOD.<span> TECH</span></div>
+  <div class="navbar-title">Vertical Farm Financial Model</div>
+</div>
+""", unsafe_allow_html=True)
+
 # ── logo ──────────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="vw-container" aria-label="VacuumWood logo">
@@ -111,6 +107,7 @@ st.markdown("""
     </div>
 </div>
 """, unsafe_allow_html=True)
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  DATA LOADING  (cached)
