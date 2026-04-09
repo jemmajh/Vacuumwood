@@ -7,6 +7,9 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parents[1]  # VerticalFarmModel/
 REPORT_DIR = BASE_DIR / "data" / "optimization_reports"
 
+if st.button("Clear cached CSV data"):
+    st.cache_data.clear()
+    st.success("Cache cleared. Rerun the page.")
 
 @st.cache_data
 def load_yearly_summary(photoperiod: int) -> pd.DataFrame:
@@ -38,6 +41,12 @@ with colC:
     )
 
 yearly = load_yearly_summary(photoperiod)
+st.write("DEBUG report dir:", REPORT_DIR)
+st.write("DEBUG expected file:", REPORT_DIR / f"thesis_yearly_summary_{photoperiod}h.csv")
+st.write("DEBUG yearly head:")
+st.dataframe(yearly.head(), use_container_width=True)
+
+
 if yearly.empty:
     expected = (REPORT_DIR / f"thesis_yearly_summary_{photoperiod}h.csv").as_posix()
     st.error(
@@ -50,6 +59,9 @@ if yearly.empty:
 years = sorted(yearly["year"].unique())
 year = st.selectbox("Select year (example scenario)", years, index=len(years) - 1)
 row = yearly[yearly["year"] == year].iloc[0]
+
+st.write("DEBUG selected year:", year)
+st.write("DEBUG selected row:", row)
 
 # Electricity use (kWh/year): pulled from main app if available, otherwise manual input
 kwh_year = st.session_state.get("elec_use_kwh")

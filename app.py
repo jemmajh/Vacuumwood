@@ -1,380 +1,705 @@
-# VerticalFarmModel/app.py
+"""
+Vertical Farm Dashboard  –  unified Streamlit application
+Tabs: Farm Setup | Electricity Optimization | Strategy Comparison | Financial Model
+"""
+
 import streamlit as st
 import pandas as pd
-import altair as alt
-from io import BytesIO
+import numpy as np
+import plotly.graph_objects as go
+import plotly.express as px
+from plotly.subplots import make_subplots
+import sys, os
 
-from reportlab.lib.pagesizes import A4
-from reportlab.pdfgen import canvas
-from reportlab.lib.units import cm
+# ── path setup ────────────────────────────────────────────────────────────────
+ROOT = os.path.dirname(__file__)
+sys.path.insert(0, ROOT)
 
 import config as cfg
-from ui.styles import apply_branding, vw_section
-from core.model import compute_areas, compute_sales, compute_capex, compute_opex, build_forecast
 from core.schemas import FarmInputs, CropInputs, FinanceInputs, ElectricityScenario
+from core.model import compute_areas, compute_sales, compute_capex, compute_opex, build_forecast
+from core.validation import validate_inputs
+from core.lighting_optimization import build_daily_report, yearly_summary_from_daily
+from core.strategy_engine import compute_strategy_table, build_comparison_df
 
-
-# -----------------------------
-# Page config (MUST be first Streamlit call)
-# -----------------------------
+# ── page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="VacuumWood Financial Model",
+    page_title="VacuumWood · Vertical Farm Model",
+    page_icon="🌿",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
 
-apply_branding()
+# ── custom CSS ────────────────────────────────────────────────────────────────
+st.markdown("""
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap');
 
+  html, body, [class*="css"] { font-family: 'Syne', sans-serif; }
 
-# -----------------------------
-# Helpers
-# -----------------------------
-def eur(x: float) -> str:
-    return f"€{x:,.0f}"
+  .block-container { padding-top: 1.8rem !important; padding-bottom: 2rem !important; }
 
+  /* logo */
+  .vw-logo { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 38px;
+             letter-spacing: 5px; line-height: 1.1; text-align: center; padding: 0.5rem 0 1.2rem; }
+  .vw-black { color: #111; }
+  .vw-green { color: #2D9C5C; }
 
-def payback_timeline(payback_year: int | None, horizon_years: int):
-    st.markdown("#### Payback timeline")
+  /* metric cards */
+  .metric-card { background: #f8faf9; border: 1.5px solid #e0ece6; border-radius: 12px;
+                 padding: 1.1rem 1.3rem; text-align: center; }
+  .metric-card .label { font-size: 12px; font-weight: 600; text-transform: uppercase;
+                        letter-spacing: 1.5px; color: #7a9e8e; margin-bottom: 4px; }
+  .metric-card .value { font-size: 26px; font-weight: 700; color: #111; font-family: 'DM Mono', monospace; }
+  .metric-card .sub   { font-size: 12px; color: #aaa; margin-top: 2px; }
 
-    if payback_year is None:
-        st.write(f"Payback is **not reached within {horizon_years} years** under this scenario.")
-        st.progress(1.0)
-        st.caption("Progress bar shows the full forecast horizon.")
-        return
+  /* saving badge */
+  .saving-badge { display:inline-block; background:#e6f5ed; color:#1d7a48; border-radius:20px;
+                  padding:3px 12px; font-size:13px; font-weight:700; font-family:'DM Mono',monospace; }
+  .saving-neg   { background:#fdecea; color:#c0392b; }
 
-    py = max(1, min(int(payback_year), int(horizon_years)))
-    frac = py / horizon_years
-    st.write(f"Expected payback in **Year {py}** (within a {horizon_years}-year horizon).")
-    st.progress(frac)
+  /* section headers */
+  .section-header { font-size:18px; font-weight:700; color:#111; border-bottom:2.5px solid #2D9C5C;
+                    padding-bottom:6px; margin:1.4rem 0 1rem; letter-spacing:0.5px; }
 
+  /* tab override */
+  div[data-testid="stTabs"] button { font-weight:700; font-size:15px; letter-spacing:0.4px; }
+  div[data-testid="stTabs"] button[aria-selected="true"] { color: #2D9C5C !important; }
 
-def build_investor_pdf(
-    scenario_label: str,
-    payback_year: int | None,
-    capex_net: float,
-    yearly_opex: float,
-    year1_profit: float,
-    npv_end: float,
-    horizon_years: int,
-    electricity_price_used: float,
-) -> bytes:
-    buf = BytesIO()
-    c = canvas.Canvas(buf, pagesize=A4)
-    w, h = A4
+  /* number inputs */
+  div[data-testid="stNumberInput"] label { font-size:13px; font-weight:600; color:#444; }
 
-    x0 = 2.0 * cm
-    y = h - 2.2 * cm
+  /* info box */
+  .info-box { background:#f0f7f4; border-left:4px solid #2D9C5C; padding:0.8rem 1rem;
+              border-radius:0 8px 8px 0; font-size:14px; color:#2a5a40; margin:0.6rem 0; }
 
-    def bold(txt, size=14, dy=0.9):
-        nonlocal y
-        c.setFont("Helvetica-Bold", size)
-        c.drawString(x0, y, txt)
-        y -= dy * cm
+  /* strategy bar highlight */
+  .best-strategy { background:#e6f5ed; border:2px solid #2D9C5C; border-radius:10px; padding:0.8rem 1rem; }
+</style>
+""", unsafe_allow_html=True)
 
-    def line(txt, size=11, dy=0.7):
-        nonlocal y
-        c.setFont("Helvetica", size)
-        c.drawString(x0, y, txt)
-        y -= dy * cm
+# ── logo ──────────────────────────────────────────────────────────────────────
+st.markdown("""
+<div class="vw-logo">
+  <span class="vw-black">VACUUM</span>
+  <span class="vw-black">WOOD.</span>
+  <span class="vw-green">TECH</span>
+</div>
+""", unsafe_allow_html=True)
 
-    bold("VacuumWood • Investor Summary", size=16, dy=1.0)
-    line(f"Scenario: {scenario_label}", size=11, dy=0.9)
-    line(f"Electricity price used: {electricity_price_used:.4f} €/kWh", size=11, dy=1.0)
+# ═══════════════════════════════════════════════════════════════════════════════
+#  DATA LOADING  (cached)
+# ═══════════════════════════════════════════════════════════════════════════════
+@st.cache_data(show_spinner="Loading electricity price data…")
+def load_price_data():
+    path = os.path.join(ROOT, "data", "electricity_prices_full.csv")
+    df = pd.read_csv(path)
+    df["datetime"] = pd.to_datetime(df["datetime"], utc=True)
+    df = df[df["year"] <= 2025].copy()
+    df["timestamp"] = df["datetime"]
+    df["price_eur_per_kwh"] = df["price_eur_kwh"]
+    return df
 
-    bold("Key outputs", size=13, dy=0.9)
-    pb_txt = f"Year {payback_year}" if payback_year is not None else f"Not within {horizon_years} years"
-    line(f"Payback: {pb_txt}")
-    line(f"CAPEX (net): {eur(capex_net)}")
-    line(f"Annual OPEX: {eur(yearly_opex)}")
-    line(f"Year 1 profit: {eur(year1_profit)}")
-    line(f"NPV (end of horizon): {eur(npv_end)}")
+@st.cache_data(show_spinner="Computing strategy comparison…")
+def load_strategy_yearly():
+    df = load_price_data()
+    return compute_strategy_table(df)
 
-    y -= 0.4 * cm
-    bold("Interpretation (client-facing)", size=13, dy=0.9)
-    if payback_year is None:
-        line("• Under this scenario, the investment does not break even within the forecast horizon.")
-    else:
-        line(f"• The investment is expected to break even around Year {payback_year}.")
-    line("• Main driver: operating electricity cost vs annual revenue.")
-    line("• Use the Electricity Optimization page to validate historical price reductions.")
+@st.cache_data(show_spinner="Running lighting optimisation…")
+def load_lighting_optimisation(fixed_start: int):
+    df = load_price_data()
+    daily = build_daily_report(df, hours_needed=18, fixed_start_hour=fixed_start)
+    yearly = yearly_summary_from_daily(daily)
+    return daily, yearly
 
-    c.setFont("Helvetica", 9)
-    c.drawString(x0, 1.6 * cm, "Generated by VacuumWood Financial Dashboard (Streamlit)")
-    c.showPage()
-    c.save()
-    return buf.getvalue()
+price_df   = load_price_data()
+strat_yr   = load_strategy_yearly()
 
+# ═══════════════════════════════════════════════════════════════════════════════
+#  TABS
+# ═══════════════════════════════════════════════════════════════════════════════
+tab1, tab2, tab3, tab4 = st.tabs([
+    "🏗️  Farm Setup",
+    "⚡  Electricity Optimisation",
+    "📊  Strategy Comparison",
+    "💶  Financial Model",
+])
 
-# -----------------------------
-# Intro (client-facing)
-# -----------------------------
-st.markdown(
-    """
-    <div style='text-align:center; font-size:16px; color:#666; margin-top:6px; margin-bottom:14px;'>
-      Baseline financial outputs for a vertical farm module.
-      Use <b>Electricity Optimization</b> to explore historical Nordpool scheduling strategies.
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-
-# -----------------------------
-# Minimal assumptions (keep hidden during demo)
-# -----------------------------
-with st.expander("Assumptions (optional)", expanded=False):
-    c1, c2, c3 = st.columns(3)
-
-    with c1:
-        length_m = st.number_input("Inner Length (m)", value=30.0, step=1.0)
-        width_m = st.number_input("Inner Width (m)", value=20.0, step=1.0)
-        floors = st.number_input("Number of floors", value=6, step=1, min_value=1)
-
-    with c2:
-        floor_usage_eff = st.slider("Floor usage efficiency", 0.40, 0.95, 0.75, 0.01)
-        insulation = st.number_input("Insulation thickness (m)", value=0.30, step=0.01)
-        height_m = st.number_input("Inner height (m)", value=2.6, step=0.1)
-
-    with c3:
-        years = st.number_input("Forecast years", value=10, step=1, min_value=1)
-        discount_rate = st.number_input("Discount rate", value=0.08, step=0.01, format="%.2f")
-        year1_eff = st.slider("Year 1 production efficiency", 0.50, 1.00, 0.80, 0.01)
-
-    st.caption("In client demos, keep this closed. It’s for internal exploration only.")
-
-
-# ---- Scenario switch
-scenario_choice = st.radio(
-    "Electricity scenario",
-    ["Base price", "Optimized schedule"],
-    horizontal=True,
-)
-
-# Always read latest values (electricity page can set these)
-base_price = float(st.session_state.get("base_price_eur_kwh", cfg.ELEC_PRICE_BASE))
-opt_price = float(st.session_state.get("opt_price_eur_kwh", cfg.ELEC_PRICE_OPT))
-
-scenario = ElectricityScenario(
-    selected="base" if scenario_choice == "Base price" else "opt",
-    base_price_eur_kwh=base_price,
-    opt_price_eur_kwh=opt_price,
-)
-
-
-# -----------------------------
-# Inputs (baseline, no huge UI)
-# -----------------------------
-farm = FarmInputs(
-    length_m=float(length_m),
-    width_m=float(width_m),
-    height_m=float(height_m),
-    insulation_m=float(insulation),    floor_usage_eff=float(floor_usage_eff),
-    floors=int(floors),
-)
-
-crops = CropInputs(
-    selected=["Lettuce", "Basil"],
-    shares={"Lettuce": 0.8, "Basil": 0.2},
-    yields_kg_m2_yr={"Lettuce": 70.0, "Basil": 30.0},
-)
-
-fin = FinanceInputs(
-    years=int(years),
-    discount_rate=float(discount_rate),
-    year1_eff=float(year1_eff),
-    eff_gain=0.05,
-)
-
-
-# -----------------------------
-# Compute model
-# -----------------------------
-areas = compute_areas(farm)
-sales_df, total_sales = compute_sales(areas["total_cultivatable"], crops)
-capex = compute_capex(areas["floor_area"], areas["total_cultivatable"])
-opex = compute_opex(areas["total_cultivatable"], scenario)
-with st.expander("Debug (temporary)", expanded=False):
-    st.write("scenario.selected:", scenario.selected)
-    st.write("base_price:", base_price)
-    st.write("opt_price:", opt_price)
-    st.write("price_used (compute_opex):", opex["price_used"])
-    st.write("elec_cost:", opex["elec_cost"])
-forecast_df, payback_year = build_forecast(
-    total_sales=total_sales,
-    yearly_opex=opex["yearly_opex"],
-    capex_net=capex["net"],
-    fin=fin,
-)
-
-# Share electricity use to other pages
-st.session_state["elec_use_kwh"] = float(opex["elec_use_kwh"])
-
-annual_profit_year1 = (total_sales * fin.year1_eff) - opex["yearly_opex"]
-npv_end = float(forecast_df["NPV - CAPEX (€)"].iloc[-1])
-
-
-# -----------------------------
-# Executive summary (client-first)
-# -----------------------------
-vw_section("Executive summary")
-
-k1, k2, k3, k4, k5 = st.columns(5)
-k1.metric("Payback (year)", str(payback_year) if payback_year is not None else "—")
-k2.metric("CAPEX (net)", eur(capex["net"]))
-k3.metric("Annual OPEX", eur(opex["yearly_opex"]))
-k4.metric("Year 1 profit", eur(annual_profit_year1))
-k5.metric("NPV (end of horizon)", eur(npv_end))
-
-st.caption(
-    f"Electricity price used: **{opex['price_used']:.4f} €/kWh** "
-    f"({scenario_choice})"
-)
-
-msg = "Break-even not reached within the forecast horizon." if payback_year is None else f"Expected break-even occurs in year {payback_year}."
-st.info(f"**What this means:** {msg}")
-
-payback_timeline(payback_year, fin.years)
-
-
-# -----------------------------
-# PDF export
-# -----------------------------
-vw_section("Investor summary PDF")
-
-scenario_label = "Base electricity price" if scenario.selected == "base" else "Optimized schedule electricity price"
-pdf_bytes = build_investor_pdf(
-    scenario_label=scenario_label,
-    payback_year=payback_year,
-    capex_net=float(capex["net"]),
-    yearly_opex=float(opex["yearly_opex"]),
-    year1_profit=float(annual_profit_year1),
-    npv_end=float(npv_end),
-    horizon_years=int(fin.years),
-    electricity_price_used=float(opex["price_used"]),
-)
-
-st.download_button(
-    "Download 1-page Investor Summary (PDF)",
-    data=pdf_bytes,
-    file_name="vacuumwood_investor_summary.pdf",
-    mime="application/pdf",
-)
-
-
-# -----------------------------
-# Tabs (clean client flow)
-# -----------------------------
-tab1, tab2, tab3 = st.tabs(["Overview", "Economics", "Forecast & cashflow"])
-
+# ──────────────────────────────────────────────────────────────────────────────
+#  TAB 1  –  FARM SETUP
+# ──────────────────────────────────────────────────────────────────────────────
 with tab1:
-    vw_section("Farm summary")
-    s1, s2, s3, s4 = st.columns(4)
-    s1.metric("Floor area (m²)", f"{areas['floor_area']:,.0f}")
-    s2.metric("Cultivable / floor (m²)", f"{areas['cultivable_per_floor']:,.0f}")
-    s3.metric("Total cultivatable (m²)", f"{areas['total_cultivatable']:,.0f}")
-    s4.metric("Floors", f"{farm.floors}")
+    st.markdown('<div class="section-header">Building Dimensions</div>', unsafe_allow_html=True)
+    c1, c2, c3, c4 = st.columns(4)
+    length = c1.number_input("Length (m)", 5.0, 500.0, cfg.DEFAULT_LENGTH_M, 1.0)
+    width  = c2.number_input("Width (m)",  5.0, 500.0, cfg.DEFAULT_WIDTH_M,  1.0)
+    height = c3.number_input("Height (m)", 2.0,  20.0, cfg.DEFAULT_HEIGHT_M, 0.1)
+    floors = c4.number_input("Number of Floors", 1, 30, cfg.DEFAULT_FLOORS, 1)
 
-    vw_section("Sales split (baseline)")
-    left, right = st.columns([1.2, 1])
+    c5, c6 = st.columns(2)
+    floor_eff  = c5.slider("Floor Usage Efficiency", 0.40, 1.00, cfg.DEFAULT_FLOOR_USAGE_EFF, 0.01,
+                           help="Share of each floor that is actual cultivation area")
+    insulation = c6.number_input("Insulation thickness (m)", 0.05, 1.0, cfg.DEFAULT_INSULATION_M, 0.05)
 
-    with left:
-        st.dataframe(sales_df, use_container_width=True)
+    farm = FarmInputs(length_m=length, width_m=width, height_m=height,
+                      insulation_m=insulation, floor_usage_eff=floor_eff, floors=floors)
+    areas = compute_areas(farm)
 
-    with right:
-        sales_plot = sales_df.reset_index()
-        sales_plot["Revenue (€)"] = sales_plot["Revenue (€)"].astype(float)
-        chart = (
-            alt.Chart(sales_plot)
-            .mark_bar()
-            .encode(
-                y=alt.Y("Product:N", sort="-x"),
-                x=alt.X("Revenue (€):Q", axis=alt.Axis(format=",.0f")),
-                tooltip=["Product:N", alt.Tooltip("Revenue (€):Q", format=",.0f")],
-            )
-            .properties(height=140)
-        )
-        st.altair_chart(chart, use_container_width=True)
+    # area summary cards
+    st.markdown('<div class="section-header">Area Summary</div>', unsafe_allow_html=True)
+    m1, m2, m3 = st.columns(3)
+    m1.markdown(f"""<div class="metric-card">
+        <div class="label">Floor Area</div>
+        <div class="value">{areas['floor_area']:,.0f} m²</div>
+        <div class="sub">per floor</div></div>""", unsafe_allow_html=True)
+    m2.markdown(f"""<div class="metric-card">
+        <div class="label">Cultivation / Floor</div>
+        <div class="value">{areas['cultivable_per_floor']:,.0f} m²</div>
+        <div class="sub">after {floor_eff*100:.0f}% efficiency</div></div>""", unsafe_allow_html=True)
+    m3.markdown(f"""<div class="metric-card">
+        <div class="label">Total Cultivatable</div>
+        <div class="value">{areas['total_cultivatable']:,.0f} m²</div>
+        <div class="sub">{floors} floors combined</div></div>""", unsafe_allow_html=True)
 
+    # ── Crop configuration ────────────────────────────────────────────────────
+    st.markdown('<div class="section-header">Crop Configuration</div>', unsafe_allow_html=True)
+    st.markdown('<div class="info-box">Defaults from the VacuumWood Excel model · adjust to explore scenarios</div>',
+                unsafe_allow_html=True)
+
+    crop_cols = st.columns(2)
+    crop_data = {}
+    all_crops = ["Lettuce", "Basil", "Spinach", "Microgreens"]
+    selected_crops = []
+
+    with crop_cols[0]:
+        st.markdown("**Crop selection & area share**")
+        lettuce_share = st.slider("Lettuce share (%)", 0, 100, int(cfg.DEFAULT_SHARES["Lettuce"]*100), 5) / 100
+        basil_share   = st.slider("Basil share (%)",   0, 100, int(cfg.DEFAULT_SHARES["Basil"]*100),   5) / 100
+        remaining = max(0.0, 1.0 - lettuce_share - basil_share)
+        st.caption(f"Remaining share: {remaining*100:.1f}%  (unallocated area)")
+
+    with crop_cols[1]:
+        st.markdown("**Yield & price (€/kg)**")
+        lettuce_yield = st.number_input("Lettuce yield (kg/m²/yr)", 10.0, 200.0, cfg.DEFAULT_YIELDS["Lettuce"], 5.0)
+        basil_yield   = st.number_input("Basil yield (kg/m²/yr)",   5.0,  150.0, cfg.DEFAULT_YIELDS["Basil"],   5.0)
+        lettuce_price = st.number_input("Lettuce price (€/kg)", 1.0, 50.0, cfg.DEFAULT_PRICE["Lettuce"], 0.5)
+        basil_price   = st.number_input("Basil price (€/kg)",   1.0, 80.0, cfg.DEFAULT_PRICE["Basil"],   1.0)
+
+    shares = {}
+    yields_map = {}
+    prices_map = {}
+    if lettuce_share > 0:
+        shares["Lettuce"] = lettuce_share
+        yields_map["Lettuce"] = lettuce_yield
+        prices_map["Lettuce"] = lettuce_price
+        selected_crops.append("Lettuce")
+    if basil_share > 0:
+        shares["Basil"] = basil_share
+        yields_map["Basil"] = basil_yield
+        prices_map["Basil"] = basil_price
+        selected_crops.append("Basil")
+
+    # patch config prices for this session
+    cfg.DEFAULT_PRICE["Lettuce"] = lettuce_price
+    cfg.DEFAULT_PRICE["Basil"]   = basil_price
+
+    share_sum = sum(shares.values())
+    errors = validate_inputs(shares, int(floors), cfg.DEFAULT_DISCOUNT_RATE,
+                             cfg.DEFAULT_YEAR1_EFF, cfg.DEFAULT_EFF_GAIN, cfg.DEFAULT_YEARS)
+    if errors:
+        for e in errors:
+            st.error(e)
+
+    # store in session state for other tabs
+    st.session_state["farm"]    = farm
+    st.session_state["areas"]   = areas
+    st.session_state["shares"]  = shares
+    st.session_state["yields"]  = yields_map
+    st.session_state["crops"]   = selected_crops
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  TAB 2  –  ELECTRICITY OPTIMISATION
+# ──────────────────────────────────────────────────────────────────────────────
 with tab2:
-    vw_section("CAPEX breakdown")
-    capex_rows = pd.DataFrame(
-        [
-            {"Item": "Building", "€": capex["build"]},
-            {"Item": "Equipment", "€": capex["eq"]},
-            {"Item": "Other fixed", "€": capex["other"]},
-            {"Item": "Subsidy (assumed)", "€": -capex["subsidy"]},
-        ]
-    )
-    cA, cB = st.columns([1, 1.2])
-    with cA:
-        st.dataframe(capex_rows, use_container_width=True, hide_index=True)
-    with cB:
-        cap_chart = (
-            alt.Chart(capex_rows)
-            .mark_bar()
-            .encode(
-                y=alt.Y("Item:N", sort="-x"),
-                x=alt.X("€:Q", axis=alt.Axis(format=",.0f")),
-                tooltip=["Item:N", alt.Tooltip("€:Q", format=",.0f")],
-            )
-            .properties(height=180)
-        )
-        st.altair_chart(cap_chart, use_container_width=True)
+    st.markdown('<div class="section-header">Electricity Price Optimisation</div>', unsafe_allow_html=True)
+    st.markdown("""<div class="info-box">
+        Nordic electricity (FI) spot prices 2013–2025. Three scheduling strategies are compared
+        against a fixed start-time baseline. The chosen optimised price feeds into the Financial Model.
+    </div>""", unsafe_allow_html=True)
 
-    vw_section("OPEX (annual)")
-    opex_rows = pd.DataFrame(
-        [
-            {"Item": "Electricity", "€": opex["elec_cost"]},
-            {"Item": "Other operating costs", "€": opex["other_opex"]},
-        ]
-    )
-    opex_chart = (
-        alt.Chart(opex_rows)
-        .mark_bar()
-        .encode(
-            y=alt.Y("Item:N", sort="-x"),
-            x=alt.X("€:Q", axis=alt.Axis(format=",.0f")),
-            tooltip=["Item:N", alt.Tooltip("€:Q", format=",.0f")],
-        )
-        .properties(height=120)
-    )
-    st.altair_chart(opex_chart, use_container_width=True)
-    st.caption(f"Electricity use estimate: **{opex['elec_use_kwh']:,.0f} kWh/year**")
+    col_ctrl, col_chart = st.columns([1, 2])
 
+    with col_ctrl:
+        fixed_start = st.selectbox("Fixed schedule start hour", list(range(24)),
+                                   index=6, format_func=lambda h: f"{h:02d}:00")
+        year_filter = st.multiselect("Filter years", sorted(price_df["year"].unique().tolist()),
+                                     default=sorted(price_df["year"].unique().tolist()))
+
+    daily_rep, yearly_opt = load_lighting_optimisation(fixed_start)
+
+    # filter by selected years
+    yearly_f = yearly_opt[yearly_opt["year"].isin(year_filter)] if year_filter else yearly_opt
+    daily_f  = daily_rep[daily_rep["year"].isin(year_filter)]   if year_filter else daily_rep
+
+    # ── savings summary cards ─────────────────────────────────────────────────
+    if not yearly_f.empty:
+        avg_fixed = yearly_f["fixed_savings_pct"].mean()
+        avg_cont  = yearly_f["continuous_savings_pct"].mean()
+        avg_spar  = yearly_f["sparse_savings_pct"].mean()
+
+        avg_fixed_price = yearly_f["fixed_price_year_eur_kwh"].mean()
+        avg_cont_price  = yearly_f["continuous_price_year_eur_kwh"].mean()
+        avg_spar_price  = yearly_f["sparse_price_year_eur_kwh"].mean()
+        avg_base_price  = yearly_f["avg_price_year_eur_kwh"].mean()
+
+        st.markdown('<div class="section-header">Average Savings vs Unoptimised Baseline</div>',
+                    unsafe_allow_html=True)
+        mc1, mc2, mc3, mc4 = st.columns(4)
+        mc1.markdown(f"""<div class="metric-card">
+            <div class="label">Unoptimised avg</div>
+            <div class="value">{avg_base_price*100:.2f} c/kWh</div>
+            <div class="sub">no scheduling</div></div>""", unsafe_allow_html=True)
+        mc2.markdown(f"""<div class="metric-card">
+            <div class="label">Fixed ({fixed_start:02d}:00)</div>
+            <div class="value">{avg_fixed_price*100:.2f} c/kWh</div>
+            <div class="sub"><span class="saving-badge">{'▼' if avg_fixed>=0 else '▲'} {abs(avg_fixed):.1f}%</span></div>
+            </div>""", unsafe_allow_html=True)
+        mc3.markdown(f"""<div class="metric-card">
+            <div class="label">Continuous block</div>
+            <div class="value">{avg_cont_price*100:.2f} c/kWh</div>
+            <div class="sub"><span class="saving-badge">▼ {avg_cont:.1f}%</span></div>
+            </div>""", unsafe_allow_html=True)
+        mc4.markdown(f"""<div class="metric-card">
+            <div class="label">Sparse (cheapest hrs)</div>
+            <div class="value">{avg_spar_price*100:.2f} c/kWh</div>
+            <div class="sub"><span class="saving-badge">▼ {avg_spar:.1f}%</span></div>
+            </div>""", unsafe_allow_html=True)
+
+        # ── store for financial tab ────────────────────────────────────────────
+        st.session_state["elec_base_price"] = avg_base_price
+        st.session_state["elec_cont_price"] = avg_cont_price
+        st.session_state["elec_spar_price"] = avg_spar_price
+        st.session_state["elec_savings_cont"] = avg_cont
+        st.session_state["elec_savings_spar"] = avg_spar
+
+        # ── yearly savings trend chart ─────────────────────────────────────────
+        st.markdown('<div class="section-header">Yearly Savings Trend (%)</div>', unsafe_allow_html=True)
+        fig_sav = go.Figure()
+        fig_sav.add_trace(go.Scatter(x=yearly_f["year"], y=yearly_f["fixed_savings_pct"],
+                          mode="lines+markers", name="Fixed", line=dict(color="#f0a500", width=2)))
+        fig_sav.add_trace(go.Scatter(x=yearly_f["year"], y=yearly_f["continuous_savings_pct"],
+                          mode="lines+markers", name="Continuous", line=dict(color="#2D9C5C", width=2)))
+        fig_sav.add_trace(go.Scatter(x=yearly_f["year"], y=yearly_f["sparse_savings_pct"],
+                          mode="lines+markers", name="Sparse", line=dict(color="#1a6edb", width=2)))
+        fig_sav.update_layout(
+            height=320, margin=dict(t=10, b=30, l=40, r=10),
+            yaxis_title="Savings vs unoptimised (%)",
+            legend=dict(orientation="h", y=-0.25),
+            plot_bgcolor="#fafafa", paper_bgcolor="white",
+            font=dict(family="Syne"),
+        )
+        st.plotly_chart(fig_sav, use_container_width=True)
+
+        # ── average price by year ──────────────────────────────────────────────
+        st.markdown('<div class="section-header">Average Electricity Price by Year (€/kWh)</div>',
+                    unsafe_allow_html=True)
+        fig_pr = go.Figure()
+        fig_pr.add_trace(go.Bar(x=yearly_f["year"], y=yearly_f["avg_price_year_eur_kwh"],
+                         name="Unoptimised", marker_color="#dde8e2"))
+        fig_pr.add_trace(go.Bar(x=yearly_f["year"], y=yearly_f["continuous_price_year_eur_kwh"],
+                         name="Continuous", marker_color="#2D9C5C"))
+        fig_pr.add_trace(go.Bar(x=yearly_f["year"], y=yearly_f["sparse_price_year_eur_kwh"],
+                         name="Sparse", marker_color="#1a6edb"))
+        fig_pr.update_layout(
+            barmode="group", height=300, margin=dict(t=10, b=30, l=50, r=10),
+            yaxis_title="€/kWh",
+            legend=dict(orientation="h", y=-0.28),
+            plot_bgcolor="#fafafa", paper_bgcolor="white",
+            font=dict(family="Syne"),
+        )
+        st.plotly_chart(fig_pr, use_container_width=True)
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  TAB 3  –  STRATEGY COMPARISON (interactive)
+# ──────────────────────────────────────────────────────────────────────────────
 with tab3:
-    vw_section("Break-even view (NPV - CAPEX over time)")
-    df = forecast_df.copy()
-    df["Year"] = df["Year"].astype(int)
+    st.markdown('<div class="section-header">Lighting Strategy Comparison</div>', unsafe_allow_html=True)
+    st.markdown("""<div class="info-box">
+        Compare three scheduling strategies across different daily light hour requirements.
+        <b>Continuous</b> = cheapest consecutive block · <b>Split</b> = two equal blocks ·
+        <b>Sparse</b> = cheapest individual hours (plant-stress risk).
+    </div>""", unsafe_allow_html=True)
 
-    line = (
-        alt.Chart(df)
-        .mark_line()
-        .encode(
-            x=alt.X("Year:Q", title="Year"),
-            y=alt.Y("NPV - CAPEX (€):Q", title="€", axis=alt.Axis(format=",.0f")),
-            tooltip=["Year:Q", alt.Tooltip("NPV - CAPEX (€):Q", format=",.0f")],
-        )
-        .properties(height=260)
+    sc1, sc2 = st.columns([1, 3])
+    with sc1:
+        hours_choice = st.radio("Daily light hours", [12, 16, 18],
+                                index=2, horizontal=False,
+                                help="18 h matches the default farm model (6,570 h/yr ÷ 365)")
+        year_range = st.select_slider("Year range",
+                                      options=sorted(strat_yr["year"].tolist()),
+                                      value=(int(strat_yr["year"].min()), int(strat_yr["year"].max())))
+        show_cost   = st.checkbox("Show absolute cost (€/day)", value=False)
+        show_saving = st.checkbox("Show savings % vs baseline", value=True)
+
+    comp_df = build_comparison_df(strat_yr, hours_choice)
+    comp_df = comp_df[(comp_df["year"] >= year_range[0]) & (comp_df["year"] <= year_range[1])]
+
+    with sc2:
+        if show_cost:
+            fig_c = go.Figure()
+            fig_c.add_trace(go.Bar(x=comp_df["year"], y=comp_df["baseline_cost"],
+                            name="Unoptimised baseline", marker_color="#e0e0e0"))
+            fig_c.add_trace(go.Bar(x=comp_df["year"], y=comp_df["continuous_cost"],
+                            name="Continuous block", marker_color="#f0a500"))
+            fig_c.add_trace(go.Bar(x=comp_df["year"], y=comp_df["split_cost"],
+                            name="Split (2 blocks)", marker_color="#2D9C5C"))
+            fig_c.add_trace(go.Bar(x=comp_df["year"], y=comp_df["sparse_cost"],
+                            name="Sparse (cheapest hrs)", marker_color="#1a6edb"))
+            fig_c.update_layout(barmode="group", height=340,
+                                yaxis_title=f"Avg daily cost for {hours_choice}h (€)",
+                                margin=dict(t=15,b=30,l=50,r=10),
+                                legend=dict(orientation="h",y=-0.30),
+                                plot_bgcolor="#fafafa", paper_bgcolor="white",
+                                font=dict(family="Syne"))
+            st.plotly_chart(fig_c, use_container_width=True)
+
+        if show_saving:
+            fig_s = go.Figure()
+            fig_s.add_trace(go.Scatter(x=comp_df["year"], y=comp_df["continuous_saving_pct"],
+                            mode="lines+markers", name="Continuous", line=dict(color="#f0a500", width=2.5)))
+            fig_s.add_trace(go.Scatter(x=comp_df["year"], y=comp_df["split_saving_pct"],
+                            mode="lines+markers", name="Split", line=dict(color="#2D9C5C", width=2.5)))
+            fig_s.add_trace(go.Scatter(x=comp_df["year"], y=comp_df["sparse_saving_pct"],
+                            mode="lines+markers", name="Sparse", line=dict(color="#1a6edb", width=2.5)))
+            fig_s.update_layout(height=320, yaxis_title="Savings vs unoptimised baseline (%)",
+                                margin=dict(t=15,b=30,l=50,r=10),
+                                legend=dict(orientation="h",y=-0.30),
+                                plot_bgcolor="#fafafa", paper_bgcolor="white",
+                                font=dict(family="Syne"))
+            st.plotly_chart(fig_s, use_container_width=True)
+
+    # ── summary table ──────────────────────────────────────────────────────────
+    st.markdown('<div class="section-header">Summary Table</div>', unsafe_allow_html=True)
+    avg_row = comp_df[["continuous_saving_pct","split_saving_pct","sparse_saving_pct"]].mean()
+    best    = avg_row.idxmax()
+    best_label = {"continuous_saving_pct": "Continuous Block",
+                  "split_saving_pct":      "Split (2 Blocks)",
+                  "sparse_saving_pct":     "Sparse (Cheapest Hours)"}[best]
+
+    st.markdown(f"""<div class="best-strategy">
+        🏆 <b>Best strategy for {hours_choice}h/day</b> over selected period:
+        <b>{best_label}</b> — average saving of
+        <span class="saving-badge">▼ {avg_row[best]:.1f}%</span>
+        vs paying unoptimised spot price
+    </div>""", unsafe_allow_html=True)
+
+    disp = comp_df[["year","baseline_cost","continuous_cost","split_cost","sparse_cost",
+                    "continuous_saving_pct","split_saving_pct","sparse_saving_pct"]].copy()
+    disp.columns = ["Year","Baseline (€)","Continuous (€)","Split (€)","Sparse (€)",
+                    "Continuous saving %","Split saving %","Sparse saving %"]
+    disp = disp.set_index("Year")
+    st.dataframe(
+        disp.style
+            .format({"Baseline (€)":"{:.3f}","Continuous (€)":"{:.3f}",
+                     "Split (€)":"{:.3f}","Sparse (€)":"{:.3f}",
+                     "Continuous saving %":"{:.1f}%","Split saving %":"{:.1f}%","Sparse saving %":"{:.1f}%"})
+            .background_gradient(subset=["Continuous saving %","Split saving %","Sparse saving %"],
+                                 cmap="Greens"),
+        use_container_width=True,
     )
 
-    zero = alt.Chart(pd.DataFrame({"y": [0]})).mark_rule().encode(y="y:Q")
-    st.altair_chart(line + zero, use_container_width=True)
+# ──────────────────────────────────────────────────────────────────────────────
+#  TAB 4  –  FINANCIAL MODEL
+# ──────────────────────────────────────────────────────────────────────────────
+with tab4:
+    st.markdown('<div class="section-header">Financial Assumptions</div>', unsafe_allow_html=True)
 
-    vw_section("Annual net cashflow")
-    bar = (
-        alt.Chart(df)
-        .mark_bar()
-        .encode(
-            x=alt.X("Year:O", title="Year"),
-            y=alt.Y("Net Cashflow (€):Q", title="€", axis=alt.Axis(format=",.0f")),
-            tooltip=["Year:O", alt.Tooltip("Net Cashflow (€):Q", format=",.0f")],
+    # pull areas/crops from session state (set in tab1)
+    areas_t4  = st.session_state.get("areas", compute_areas(FarmInputs(
+        cfg.DEFAULT_LENGTH_M, cfg.DEFAULT_WIDTH_M, cfg.DEFAULT_HEIGHT_M,
+        cfg.DEFAULT_INSULATION_M, cfg.DEFAULT_FLOOR_USAGE_EFF, cfg.DEFAULT_FLOORS)))
+    shares_t4 = st.session_state.get("shares", cfg.DEFAULT_SHARES)
+    yields_t4 = st.session_state.get("yields", cfg.DEFAULT_YIELDS)
+    crops_t4  = st.session_state.get("crops",  cfg.DEFAULT_CROPS)
+
+    if not shares_t4 or abs(sum(shares_t4.values()) - 1.0) > 0.01:
+        st.warning("Crop shares don't sum to 100% — check Farm Setup tab.")
+        shares_t4 = cfg.DEFAULT_SHARES
+        yields_t4 = cfg.DEFAULT_YIELDS
+        crops_t4  = cfg.DEFAULT_CROPS
+
+    fc1, fc2, fc3 = st.columns(3)
+    discount_rate = fc1.number_input("Discount rate (%)", 1.0, 30.0,
+                                     cfg.DEFAULT_DISCOUNT_RATE * 100, 0.5) / 100
+    year1_eff     = fc2.slider("Year 1 operational efficiency", 0.50, 1.00, cfg.DEFAULT_YEAR1_EFF, 0.01)
+    eff_gain      = fc3.number_input("Annual efficiency gain (%)", 0.0, 10.0,
+                                     cfg.DEFAULT_EFF_GAIN * 100, 0.5) / 100
+    fin_years     = st.slider("Forecast years", 5, 20, cfg.DEFAULT_YEARS)
+
+    # ── electricity price scenario ─────────────────────────────────────────────
+    st.markdown('<div class="section-header">Electricity Price Scenario</div>', unsafe_allow_html=True)
+
+    base_price_default = st.session_state.get("elec_base_price", cfg.BASE_ELEC_PRICE)
+    cont_price_default = st.session_state.get("elec_cont_price", base_price_default * 0.87)
+    spar_price_default = st.session_state.get("elec_spar_price", base_price_default * 0.80)
+    saving_cont = st.session_state.get("elec_savings_cont", 13.0)
+    saving_spar = st.session_state.get("elec_savings_spar", 20.0)
+
+    ep1, ep2 = st.columns([1, 2])
+    with ep1:
+        scenario_choice = st.radio(
+            "Select electricity scenario",
+            ["Base (no optimisation)", "Continuous block", "Sparse (cheapest hours)"],
+            index=0,
         )
-        .properties(height=220)
+        st.markdown(f"""<div class="info-box">
+            <b>Continuous block</b> saves ~<b>{saving_cont:.1f}%</b> vs baseline<br>
+            <b>Sparse strategy</b> saves ~<b>{saving_spar:.1f}%</b> vs baseline<br>
+            <small>Based on 2013–2025 Nord Pool FI spot prices</small>
+        </div>""", unsafe_allow_html=True)
+
+    with ep2:
+        base_price_input = st.number_input("Base electricity price (€/kWh)",
+                                           0.01, 0.50, float(round(base_price_default, 4)), 0.005,
+                                           format="%.4f")
+        opt_price_input  = st.number_input("Optimised electricity price (€/kWh)",
+                                           0.005, 0.40,
+                                           float(round(min(cont_price_default, spar_price_default), 4)),
+                                           0.005, format="%.4f",
+                                           help="Populated from Electricity Optimisation tab")
+
+    scenario_map = {
+        "Base (no optimisation)":   "base",
+        "Continuous block":         "opt",
+        "Sparse (cheapest hours)":  "opt",
+    }
+    opt_price_used = {
+        "Base (no optimisation)":   base_price_input,
+        "Continuous block":         cont_price_default,
+        "Sparse (cheapest hours)":  spar_price_default,
+    }[scenario_choice]
+
+    scenario = ElectricityScenario(
+        base_price_eur_kwh=base_price_input,
+        opt_price_eur_kwh=opt_price_used,
+        selected=scenario_map[scenario_choice],
     )
-    st.altair_chart(bar, use_container_width=True)
 
-    vw_section("Forecast table")
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    # ── compute model ──────────────────────────────────────────────────────────
+    crop_inputs = CropInputs(selected=crops_t4, shares=shares_t4, yields_kg_m2_yr=yields_t4)
+    sales_df, total_sales = compute_sales(areas_t4["total_cultivatable"], crop_inputs)
+    capex   = compute_capex(areas_t4["floor_area"], areas_t4["total_cultivatable"])
+    opex    = compute_opex(areas_t4["total_cultivatable"], scenario)
+    fin_in  = FinanceInputs(discount_rate=discount_rate, year1_eff=year1_eff,
+                            eff_gain=eff_gain, years=fin_years)
+    forecast, payback = build_forecast(total_sales, opex["yearly_opex"], capex["net"], fin_in)
 
-st.markdown("---")
-st.caption("VacuumWood • Vertical Farming Financial Model")
+    # also compute base+opt for comparison
+    scen_base = ElectricityScenario(base_price_eur_kwh=base_price_input,
+                                    opt_price_eur_kwh=opt_price_used, selected="base")
+    scen_opt  = ElectricityScenario(base_price_eur_kwh=base_price_input,
+                                    opt_price_eur_kwh=opt_price_used, selected="opt")
+    opex_base = compute_opex(areas_t4["total_cultivatable"], scen_base)
+    opex_opt  = compute_opex(areas_t4["total_cultivatable"], scen_opt)
+    _, payback_base = build_forecast(total_sales, opex_base["yearly_opex"], capex["net"], fin_in)
+    _, payback_opt  = build_forecast(total_sales, opex_opt["yearly_opex"],  capex["net"], fin_in)
+
+    elec_saving_eur = opex_base["elec_cost"] - opex_opt["elec_cost"]
+    elec_saving_pct = (elec_saving_eur / opex_base["elec_cost"] * 100) if opex_base["elec_cost"] > 0 else 0
+
+    # ── KPI row ────────────────────────────────────────────────────────────────
+    st.markdown('<div class="section-header">Key Financials</div>', unsafe_allow_html=True)
+    k1, k2, k3, k4, k5 = st.columns(5)
+    k1.markdown(f"""<div class="metric-card">
+        <div class="label">Total Sales / yr</div>
+        <div class="value">€{total_sales/1e6:.2f}M</div>
+        <div class="sub">{areas_t4['total_cultivatable']:,.0f} m²</div></div>""", unsafe_allow_html=True)
+    k2.markdown(f"""<div class="metric-card">
+        <div class="label">CapEx (net)</div>
+        <div class="value">€{capex['net']/1e6:.2f}M</div>
+        <div class="sub">gross €{capex['gross']/1e6:.2f}M · subsidy €{capex['subsidy']/1e3:.0f}k</div></div>""",
+        unsafe_allow_html=True)
+    k3.markdown(f"""<div class="metric-card">
+        <div class="label">Total OpEx / yr</div>
+        <div class="value">€{opex['yearly_opex']/1e3:.0f}k</div>
+        <div class="sub">elec €{opex['elec_cost']/1e3:.0f}k + other €{opex['other_opex']/1e3:.0f}k</div></div>""",
+        unsafe_allow_html=True)
+    k4.markdown(f"""<div class="metric-card">
+        <div class="label">Elec saving (opt vs base)</div>
+        <div class="value">€{abs(elec_saving_eur)/1e3:.0f}k/yr</div>
+        <div class="sub"><span class="saving-badge">▼ {elec_saving_pct:.1f}%</span></div></div>""",
+        unsafe_allow_html=True)
+    payback_str = f"Year {payback}" if payback else ">forecast"
+    k5.markdown(f"""<div class="metric-card">
+        <div class="label">Payback (current)</div>
+        <div class="value">{payback_str}</div>
+        <div class="sub">base: yr {payback_base or '—'} · opt: yr {payback_opt or '—'}</div></div>""",
+        unsafe_allow_html=True)
+
+    # ── OpEx breakdown ─────────────────────────────────────────────────────────
+    st.markdown('<div class="section-header">OpEx Breakdown — Electricity vs Other Costs</div>',
+                unsafe_allow_html=True)
+
+    elec_pct_base = opex_base["elec_cost"] / opex_base["yearly_opex"] * 100
+    elec_pct_opt  = opex_opt["elec_cost"]  / opex_opt["yearly_opex"]  * 100
+
+    ob1, ob2, ob3 = st.columns([1.1, 1.1, 0.9])
+
+    # Left: stacked bar — base vs optimised, showing elec + other split
+    with ob1:
+        fig_stack = go.Figure()
+        fig_stack.add_trace(go.Bar(
+            name="Electricity", x=["Base scenario", "Optimised scenario"],
+            y=[opex_base["elec_cost"], opex_opt["elec_cost"]],
+            marker_color=["#f0a500", "#2D9C5C"],
+            text=[f"€{opex_base['elec_cost']/1e3:.0f}k<br>({elec_pct_base:.0f}%)",
+                  f"€{opex_opt['elec_cost']/1e3:.0f}k<br>({elec_pct_opt:.0f}%)"],
+            textposition="inside", insidetextanchor="middle",
+            textfont=dict(color="white", size=13, family="DM Mono"),
+        ))
+        fig_stack.add_trace(go.Bar(
+            name="Other OpEx", x=["Base scenario", "Optimised scenario"],
+            y=[opex_base["other_opex"], opex_opt["other_opex"]],
+            marker_color=["#d0ddd8", "#d0ddd8"],
+            text=[f"€{opex_base['other_opex']/1e3:.0f}k<br>({100-elec_pct_base:.0f}%)",
+                  f"€{opex_opt['other_opex']/1e3:.0f}k<br>({100-elec_pct_opt:.0f}%)"],
+            textposition="inside", insidetextanchor="middle",
+            textfont=dict(color="#555", size=13, family="DM Mono"),
+        ))
+        fig_stack.update_layout(
+            barmode="stack", height=300,
+            margin=dict(t=10, b=10, l=50, r=10),
+            yaxis_title="Annual OpEx (€)",
+            legend=dict(orientation="h", y=-0.18),
+            plot_bgcolor="#fafafa", paper_bgcolor="white",
+            font=dict(family="Syne"),
+        )
+        st.plotly_chart(fig_stack, use_container_width=True)
+
+    # Middle: donut — electricity share of base opex
+    with ob2:
+        fig_donut = go.Figure(go.Pie(
+            labels=["Electricity", "Other OpEx"],
+            values=[opex_base["elec_cost"], opex_base["other_opex"]],
+            hole=0.62,
+            marker_colors=["#f0a500", "#d0ddd8"],
+            textinfo="label+percent",
+            textfont=dict(family="Syne", size=13),
+            hovertemplate="%{label}: €%{value:,.0f}<extra></extra>",
+        ))
+        fig_donut.add_annotation(
+            text=f"<b>{elec_pct_base:.0f}%</b><br>electricity",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=16, family="Syne", color="#111"),
+        )
+        fig_donut.update_layout(
+            height=300, margin=dict(t=10, b=10, l=10, r=10),
+            showlegend=False, paper_bgcolor="white",
+            title=dict(text="Base OpEx split", font=dict(size=13, family="Syne"), x=0.5),
+        )
+        st.plotly_chart(fig_donut, use_container_width=True)
+
+    # Right: savings summary callout
+    with ob3:
+        saving_eur  = opex_base["elec_cost"] - opex_opt["elec_cost"]
+        saving_pct_ = saving_eur / opex_base["elec_cost"] * 100 if opex_base["elec_cost"] > 0 else 0
+        total_saving_pct = saving_eur / opex_base["yearly_opex"] * 100
+
+        st.markdown(f"""
+        <div style="padding-top:10px">
+          <div class="metric-card" style="margin-bottom:12px">
+            <div class="label">Electricity share of OpEx</div>
+            <div class="value">{elec_pct_base:.0f}%</div>
+            <div class="sub">base · {elec_pct_opt:.0f}% optimised</div>
+          </div>
+          <div class="metric-card" style="margin-bottom:12px">
+            <div class="label">Annual elec. saving</div>
+            <div class="value">€{saving_eur/1e3:.1f}k</div>
+            <div class="sub"><span class="saving-badge">▼ {saving_pct_:.1f}% of elec cost</span></div>
+          </div>
+          <div class="metric-card">
+            <div class="label">Total OpEx reduction</div>
+            <div class="value">{total_saving_pct:.1f}%</div>
+            <div class="sub">from electricity optimisation alone</div>
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # ── revenue–cost waterfall ─────────────────────────────────────────────────
+    st.markdown('<div class="section-header">Revenue & Cost Waterfall</div>', unsafe_allow_html=True)
+    fig_wf = go.Figure(go.Waterfall(
+        orientation="v",
+        measure=["absolute", "relative", "relative", "relative", "total"],
+        x=["Annual Revenue", "Electricity (base)", "Elec. saving (opt)", "Other OpEx", "Net Margin"],
+        y=[
+            total_sales,
+            -opex_base["elec_cost"],
+            saving_eur,
+            -opex_base["other_opex"],
+            0,
+        ],
+        connector={"line": {"color": "#ccc", "width": 1}},
+        increasing={"marker": {"color": "#2D9C5C"}},
+        decreasing={"marker": {"color": "#e05050"}},
+        totals={"marker": {"color": "#1a6edb"}},
+        text=[
+            f"€{total_sales/1e3:.0f}k",
+            f"−€{opex_base['elec_cost']/1e3:.0f}k",
+            f"+€{saving_eur/1e3:.0f}k",
+            f"−€{opex_base['other_opex']/1e3:.0f}k",
+            f"€{(total_sales - opex_base['other_opex'] - opex_opt['elec_cost'])/1e3:.0f}k",
+        ],
+        textposition="outside",
+        textfont=dict(family="DM Mono", size=12),
+    ))
+    fig_wf.update_layout(
+        height=320, margin=dict(t=15, b=10, l=60, r=10),
+        yaxis_title="€", plot_bgcolor="#fafafa", paper_bgcolor="white",
+        font=dict(family="Syne"),
+    )
+    st.plotly_chart(fig_wf, use_container_width=True)
+
+    # ── NPV / payback chart ────────────────────────────────────────────────────
+    st.markdown('<div class="section-header">NPV Forecast — Base vs Optimised Electricity</div>',
+                unsafe_allow_html=True)
+
+    fc_base, _ = build_forecast(total_sales, opex_base["yearly_opex"], capex["net"], fin_in)
+    fc_opt,  _ = build_forecast(total_sales, opex_opt["yearly_opex"],  capex["net"], fin_in)
+
+    fig_npv = go.Figure()
+    fig_npv.add_hline(y=0, line_dash="dot", line_color="#999", line_width=1.5)
+    fig_npv.add_trace(go.Scatter(
+        x=fc_base["Year"], y=fc_base["NPV - CAPEX (€)"],
+        mode="lines+markers", name="Base electricity",
+        line=dict(color="#ccc", width=2), marker=dict(size=6),
+        fill="tozeroy", fillcolor="rgba(200,200,200,0.15)"
+    ))
+    fig_npv.add_trace(go.Scatter(
+        x=fc_opt["Year"], y=fc_opt["NPV - CAPEX (€)"],
+        mode="lines+markers", name="Optimised electricity",
+        line=dict(color="#2D9C5C", width=2.5), marker=dict(size=7),
+        fill="tozeroy", fillcolor="rgba(45,156,92,0.10)"
+    ))
+    fig_npv.update_layout(
+        height=370, margin=dict(t=15,b=30,l=60,r=10),
+        yaxis_title="Cumulative NPV − CapEx (€)",
+        xaxis_title="Year",
+        legend=dict(orientation="h", y=-0.22),
+        plot_bgcolor="#fafafa", paper_bgcolor="white",
+        font=dict(family="Syne"),
+    )
+    st.plotly_chart(fig_npv, use_container_width=True)
+
+    # ── forecast table ─────────────────────────────────────────────────────────
+    with st.expander("Detailed forecast table"):
+        disp_fc = forecast.copy()
+        for col in ["Net Cashflow (€)", "Discounted (€)", "Cumulative NPV (€)", "NPV - CAPEX (€)"]:
+            disp_fc[col] = disp_fc[col].map(lambda x: f"€{x:,.0f}")
+        st.dataframe(disp_fc.set_index("Year"), use_container_width=True)
+
+    # ── sales breakdown ────────────────────────────────────────────────────────
+    with st.expander("Revenue breakdown by crop"):
+        disp_sales = sales_df.copy()
+        disp_sales["Revenue (€)"] = disp_sales["Revenue (€)"].map(lambda x: f"€{x:,.0f}")
+        disp_sales["Area (m²)"] = disp_sales["Area (m²)"].map(lambda x: f"{x:,.0f}")
+        st.dataframe(disp_sales, use_container_width=True)
