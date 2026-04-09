@@ -32,17 +32,21 @@ st.set_page_config(
 # ── custom CSS ────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Barlow+Condensed:wght@700&family=Syne:wght@400;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Barlow+Condensed:wght@700&family=Syne:wght@400;600;700;800&display=swap');
 
   html, body, [class*="css"] { font-family: 'Syne', sans-serif; }
 
-  .block-container { padding-top: 1.8rem !important; padding-bottom: 2rem !important; }
+  .block-container { padding-top: 3.5rem !important; padding-bottom: 2rem !important; }
 
+  [data-testid="stSidebar"] { display: none !important; }
+  [data-testid="collapsedControl"] { display: none !important; }
+  
   /* logo */
-.vw-logo { font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 42px;
-           letter-spacing: 4px; line-height: 1.1; }
-  .vw-black { color: #111; }
-  .vw-green { color: #2D9C5C; }
+  .vw-container { text-align: center; padding-top: 1.5rem; padding-bottom: 0.5rem; }
+  .vw-logo { font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 42px;
+             letter-spacing: 4px; line-height: 1.1; }
+  .vw-black { color: #000000; }
+  .vw-green { color: #3CB371; }
 
   /* metric cards */
   .metric-card { background: #f8faf9; border: 1.5px solid #e0ece6; border-radius: 12px;
