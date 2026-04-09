@@ -159,8 +159,6 @@ with tab1:
 
     # Crop configuration
     st.markdown('<div class="section-header">Crop Configuration</div>', unsafe_allow_html=True)
-    st.markdown('<div class="info-box">Defaults from the VacuumWood Excel model · adjust to explore scenarios</div>',
-                unsafe_allow_html=True)
 
     crop_cols = st.columns(2)
     crop_data = {}
