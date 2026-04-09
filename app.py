@@ -56,6 +56,8 @@ st.markdown("""
   .navbar-title { font-family: 'Syne', sans-serif; font-size: 12px;
                 color: #888; letter-spacing: 1px; text-transform: uppercase; }
   
+  header[data-testid="stHeader"] { background: transparent !important; }
+  .block-container { padding-top: 5rem !important; }
   
   /* metric cards */
   .metric-card { background: #f8faf9; border: 1.5px solid #e0ece6; border-radius: 12px;
@@ -424,9 +426,7 @@ with tab3:
         disp.style
             .format({"Baseline (€)":"{:.3f}","Continuous (€)":"{:.3f}",
                      "Split (€)":"{:.3f}","Sparse (€)":"{:.3f}",
-                     "Continuous saving %":"{:.1f}%","Split saving %":"{:.1f}%","Sparse saving %":"{:.1f}%"})
-            .background_gradient(subset=["Continuous saving %","Split saving %","Sparse saving %"],
-                                 cmap="Greens"),
+                     "Continuous saving %":"{:.1f}%","Split saving %":"{:.1f}%","Sparse saving %":"{:.1f}%"}),
         use_container_width=True,
     )
 
