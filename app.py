@@ -92,7 +92,7 @@ st.markdown("""
 # ═══════════════════════════════════════════════════════════════════════════════
 @st.cache_data(show_spinner="Loading electricity price data…")
 def load_price_data():
-    path = os.path.join(ROOT, "data", "electricity_prices_full.csv")
+    path = os.path.join(ROOT, "data", "clean_data", "electricity_prices_full.csv")
     df = pd.read_csv(path)
     df["datetime"] = pd.to_datetime(df["datetime"], utc=True)
     df = df[df["year"] <= 2025].copy()

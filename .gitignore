@@ -13,7 +13,6 @@ data/notebook/
 *.ipynb
 
 # Large files
-*.csv
 *.xml
 
 # Python cache
