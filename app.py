@@ -25,7 +25,6 @@ from core.strategy_engine import compute_strategy_table, build_comparison_df
 # ── page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="VacuumWood · Vertical Farm Model",
-    page_icon="🌿",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
@@ -80,10 +79,12 @@ st.markdown("""
 
 # ── logo ──────────────────────────────────────────────────────────────────────
 st.markdown("""
-<div class="vw-logo">
-  <span class="vw-black">VACUUM</span>
-  <span class="vw-black">WOOD.</span>
-  <span class="vw-green">TECH</span>
+<div class="vw-container" aria-label="VacuumWood logo">
+  <div class="vw-logo">
+    <div class="vw-black">VACUUM</div>
+    <div class="vw-black">WOOD.</div>
+    <div class="vw-green">TECH</div>
+  </div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -119,10 +120,10 @@ strat_yr   = load_strategy_yearly()
 #  TABS
 # ═══════════════════════════════════════════════════════════════════════════════
 tab1, tab2, tab3, tab4 = st.tabs([
-    "🏗️  Farm Setup",
-    "⚡  Electricity Optimisation",
-    "📊  Strategy Comparison",
-    "💶  Financial Model",
+    "️Farm Setup",
+    "Electricity Optimisation",
+    "Strategy Comparison",
+    "Financial Model",
 ])
 
 # ──────────────────────────────────────────────────────────────────────────────
