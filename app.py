@@ -38,7 +38,7 @@ st.markdown("""
   
   /* logo */
   .vw-container { text-align: center; padding-top: 0.8rem; padding-bottom: 0.3rem; }
-  .vw-logo { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 42px;
+  .vw-logo { font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 42px;
              letter-spacing: 4px; line-height: 1.1; }
   .vw-black { color: #000000; }
   .vw-green { color: #3CB371; }
@@ -301,6 +301,9 @@ with tab1:
                                    opt_price_eur_kwh=opt_price_used, selected="opt")
     opex_base = compute_opex(areas_t4["total_cultivatable"], scen_base)
     opex_opt = compute_opex(areas_t4["total_cultivatable"], scen_opt)
+    saving_eur = opex_base["elec_cost"] - opex_opt["elec_cost"]
+    saving_pct_ = saving_eur / opex_base["elec_cost"] * 100 if opex_base["elec_cost"] > 0 else 0
+    total_saving_pct = saving_eur / opex_base["yearly_opex"] * 100
     _, payback_base = build_forecast(total_sales, opex_base["yearly_opex"], capex["net"], fin_in)
     _, payback_opt = build_forecast(total_sales, opex_opt["yearly_opex"], capex["net"], fin_in)
 
@@ -323,8 +326,8 @@ with tab1:
                 unsafe_allow_html=True)
     k4.markdown(f"""<div class="metric-card">
         <div class="label">Elec saving (opt vs base)</div>
-        <div class="value">€{abs(elec_saving_eur) / 1e3:.0f}k/yr</div>
-        <div class="sub"><span class="saving-badge">▼ {elec_saving_pct:.1f}%</span></div></div>""",
+        <div class="value">€{abs(saving_eur) / 1e3:.0f}k/yr</div>
+        <div class="sub"><span class="saving-badge">▼ {saving_pct_:.1f}%</span></div></div>""",
                 unsafe_allow_html=True)
     payback_str = f"Year {payback}" if payback else ">forecast"
     k5.markdown(f"""<div class="metric-card">
@@ -339,9 +342,6 @@ with tab1:
 
     elec_pct_base = opex_base["elec_cost"] / opex_base["yearly_opex"] * 100
     elec_pct_opt = opex_opt["elec_cost"] / opex_opt["yearly_opex"] * 100
-    saving_eur = opex_base["elec_cost"] - opex_opt["elec_cost"]
-    saving_pct_ = saving_eur / opex_base["elec_cost"] * 100 if opex_base["elec_cost"] > 0 else 0
-    total_saving_pct = saving_eur / opex_base["yearly_opex"] * 100
 
     ob1, ob2, ob3 = st.columns([1.1, 1.1, 0.9])
 
@@ -401,9 +401,9 @@ with tab1:
 
     # Right: savings summary callout
     with ob3:
-        saving_eur = opex_base["elec_cost"] - opex_opt["elec_cost"]
-        saving_pct_ = saving_eur / opex_base["elec_cost"] * 100 if opex_base["elec_cost"] > 0 else 0
-        total_saving_pct = saving_eur / opex_base["yearly_opex"] * 100
+        #saving_eur = opex_base["elec_cost"] - opex_opt["elec_cost"]
+        #saving_pct_ = saving_eur / opex_base["elec_cost"] * 100 if opex_base["elec_cost"] > 0 else 0
+        #total_saving_pct = saving_eur / opex_base["yearly_opex"] * 100
 
         st.markdown(f"""
         <div style="padding-top:10px">
